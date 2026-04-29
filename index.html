@@ -4,58 +4,103 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Pavitra Jha</title>
-<meta name="description" content="Offensive security researcher focused on browser, Android, and Linux kernel security, sandbox escapes, and exploitability-driven vulnerability research." />
-
-<style>
-body { margin:0; font-family: Georgia, serif; background:#f7f4ee; color:#111; }
-.container { max-width: 1050px; margin:auto; padding:80px 24px; }
-h1 { font-size: 58px; letter-spacing:-1px; margin-bottom:10px; }
-.sub { color:#444; font-size:18px; line-height:1.8; max-width:760px; }
-.section { margin-top:70px; }
-h2 { font-size:22px; margin-bottom:18px; letter-spacing:-0.3px; }
-ul { line-height:1.9; color:#333; padding-left:18px; }
-.card { padding:18px 20px; border:1px solid #ddd; margin-bottom:12px; border-radius:12px; background:#fffdf9; }
-.small { color:#666; font-size:14px; line-height:1.7; }
-a { color:#111; }
-</style>
+<link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
+
 <div class="container">
 
+<header>
 <h1>Pavitra Jha</h1>
-
 <p class="sub">
-Pavitra Jha is an offensive security researcher focused on deep system level vulnerability research across browser engines, Android internals, and Linux kernel subsystems. His work targets real-world exploitability conditions in production software rather than isolated theoretical bugs.
+Offensive security researcher focused on browser, Android, and Linux kernel security with emphasis on real-world exploitability and system-level vulnerability research.
 </p>
 
 <p class="sub">
-He is 17 years old and has been actively engaged in security research since the age of 9. His focus spans execution engine internals, kernel attack surfaces, sandbox isolation boundaries, and architecture level failure conditions that lead to privilege escalation.
+17 years old. Security research since age 9. Work spans execution engines, kernel attack surfaces, sandbox boundaries, and privilege escalation paths in production systems.
 </p>
+</header>
 
-<div class="section">
+<section>
 <h2>Technical Capability</h2>
 
-<div class="card"><b>Browser Security</b> - Deep analysis of V8 and JIT compilation pipelines including TurboFan optimization stages, type inference failures, memory layout manipulation, and exploitation primitives such as out-of-bounds access, type confusion, and use-after-free conditions under modern mitigation systems.</div>
+<div class="card">Browser Security: V8 internals, JIT pipelines, memory corruption primitives, exploitation techniques under modern mitigations</div>
+<div class="card">Android Security: framework attack surfaces, Binder IPC, SELinux policy, kernel interaction paths</div>
+<div class="card">Linux Kernel Security: driver flaws, race conditions, memory safety issues, upstream fixes analysis</div>
+<div class="card">Sandbox & Mitigations: ASLR, KASLR, CFG, CFI, PAC, sandbox escape conditions</div>
+<div class="card">Reverse Engineering: ARM64, x86, x64 across Windows, Linux, Android</div>
+<div class="card">Fuzzing: structured fuzzing, crash triage, exploitability validation, harness design</div>
+<div class="card">Source Audit: large-scale code review and architecture-level vulnerability discovery</div>
 
-<div class="card"><b>Android Security</b> - Security analysis of Android framework and kernel boundary interactions including Binder IPC model, SELinux enforcement logic, system service attack surfaces, permission boundary violations, and kernel-user space escalation paths.</div>
+</section>
 
-<div class="card"><b>Linux Kernel Security</b> - Kernel level vulnerability research across drivers, memory management, concurrency control, and race condition exploitation with focus on unsafe memory access patterns and upstream remediation behavior in production kernels.</div>
+<section>
+<h2>Research Approach</h2>
+<ul>
+<li>Exploitability-first reasoning model</li>
+<li>Architecture-level vulnerability discovery</li>
+<li>Logic + memory corruption hybrid exploitation thinking</li>
+<li>Cross-boundary privilege escalation modeling</li>
+<li>Systemic failure analysis over isolated bug hunting</li>
+</ul>
+</section>
 
-<div class="card"><b>Sandbox & Mitigations</b> - Analysis of ASLR, KASLR, CFG, CFI, PAC, and sandbox isolation layers with focus on identifying real-world bypass conditions under complex execution flows and weak architectural assumptions.</div>
+<section>
+<h2>Selected Public Record</h2>
 
-<div class="card"><b>Reverse Engineering</b> - Cross architecture binary analysis across ARM64, x86, and x64 systems spanning Windows, Linux, and Android including static analysis, dynamic tracing, and behavioral reconstruction of closed-source components.</div>
+<div class="card">
+Linux Kernel Contributions<br>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha">lore.kernel.org</a>
+</div>
 
-<div class="card"><b>Fuzzing & Automation</b> - Design of targeted fuzzing systems including structured input generation, crash triage pipelines, exploitability validation, and custom harness development for both kernel and user space targets.</div>
+<div class="card">
+Philips Security Disclosure Program<br>
+<a href="https://www.philips.com/a-w/security/coordinated-vulnerability-disclosure/hall-of-honors.html">Philips</a>
+</div>
 
-<div class="card"><b>Source Code Audit</b> - Large scale codebase analysis focused on architectural flaws, unsafe design patterns, and multi-stage vulnerability chains emerging across system boundaries rather than isolated implementation bugs.</div>
+<div class="card">
+Oracle Security Advisory Reference<br>
+<a href="https://www.oracle.com/security-alerts/cpujul2024.html">Oracle CPU</a>
+</div>
+
+<div class="card">
+Podcast: Hackers Behind the Code<br>
+<a href="https://open.spotify.com/episode/4q6rhJsXgfwRTaq5ts32MN">Spotify</a>
+</div>
+
+<div class="card">
+Interview: XSS Rat<br>
+<a href="https://www.youtube.com/watch?v=K3DENG8kdYA">YouTube</a>
+</div>
+
+</section>
+
+<section>
+<h2>Recognition</h2>
+<ul>
+<li>Indian Book of Records recognition in ethical hacking category</li>
+<li>Nullcon Goa 2023 scholarship participation</li>
+<li>Public technical talks and research presentations</li>
+<li>Security podcast appearances</li>
+</ul>
+</section>
+
+<section>
+<h2>Confidential Work Statement</h2>
+<p>
+A substantial portion of offensive security research is conducted under NDA or exists as upstream remediation across production systems.
+Public disclosures represent only a subset of total research scope.
+</p>
+</section>
+
+<section>
+<h2>Contact</h2>
+<p>Email: jhapavitra98@gmail.com</p>
+<p>LinkedIn: https://linkedin.com/in/cybersherlock</p>
+</section>
 
 </div>
 
-<div class="section">
-<h2>Research Approach</h2>
-<ul>
-<li>Exploitability first reasoning applied across all research domains</li>
-<li>Architecture level vulnerability discovery beyond implementation level bugs</li>
-<li>Combination of logic flaws and memory corruption for multi stage exploitation paths</li>
-<li>Cross boundary privilege escalation modeling across browser, OS, and kernel layers</li>
+</body>
 </html>
