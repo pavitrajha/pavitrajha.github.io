@@ -3,8 +3,71 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FOTG210 UDC OOB Write-up</title>
+<title>FOTG210 UDC: Slab Out-of-Bounds via wIndex</title>
+
 <link rel="stylesheet" href="../style.css" />
+
+<style>
+body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #ffffff;
+    color: #111;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+h2 {
+    font-size: 18px;
+    margin-top: 40px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 6px;
+}
+
+p {
+    margin: 12px 0;
+}
+
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+}
+
+pre {
+    background: #f6f8fa;
+    border: 1px solid #e5e7eb;
+    padding: 14px;
+    overflow-x: auto;
+    font-size: 13px;
+}
+
+.meta {
+    color: #555;
+    font-size: 13px;
+}
+
+.section {
+    margin-top: 20px;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 30px 0;
+}
+</style>
 </head>
 
 <body>
@@ -13,14 +76,24 @@
 
 <article>
 
-<h1>3x slab-out-of-bounds in fotg210 UDC via attacker-controlled wIndex</h1>
+<h1>FOTG210 USB Device Controller: slab out-of-bounds via attacker-controlled wIndex</h1>
+
+<p class="meta">
+Three independent slab out-of-bounds conditions in the FOTG210 UDC driver caused by missing bounds validation on endpoint indices derived from USB SETUP packets.
+</p>
+
+<hr>
+
+<div class="section">
+<h2>Overview</h2>
 
 <p>
-Bounds-check omission in <code>drivers/usb/fotg210/fotg210-udc.c</code> leads to three independently reachable out-of-bounds accesses of <code>fotg210_udc.ep[]</code>.
+The FOTG210 USB device controller processes USB SETUP packets from a fully untrusted USB host.
+Endpoint selection is derived directly from the <code>wIndex</code> field without validating against the endpoint table size.
 </p>
 
 <p>
-The endpoint array is declared with <code>FOTG210_MAX_NUM_EP = 5</code> (valid indices 0–4), but request handlers derive an endpoint number from:
+The index derivation is:
 </p>
 
 <pre>
@@ -28,25 +101,12 @@ ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK
 </pre>
 
 <p>
-This produces values 0–15 with no bounds validation before indexing <code>fotg210->ep[epnum]</code>. A malicious USB host can trigger slab OOB reads beyond the <code>fotg210_udc</code> allocation.
+This produces values in the range 0–15, while the endpoint array size is fixed at 5.
 </p>
+</div>
 
-<h2>1. Environment</h2>
-
-<pre>
-Kernel    : Linux 7.0.0-rc7+
-Arch      : x86_64 (QEMU i440FX)
-KASAN     : enabled (generic + inline)
-KASLR     : disabled (nokaslr)
-</pre>
-
-<h2>2. Threat Model</h2>
-
-<p>
-USB device controller runs in peripheral mode. Attacker is a malicious USB host. No authentication required. Attack surface is USB SETUP packet handling.
-</p>
-
-<h2>3. Root Cause</h2>
+<div class="section">
+<h2>Memory layout mismatch</h2>
 
 <pre>
 #define FOTG210_MAX_NUM_EP 5
@@ -54,28 +114,46 @@ struct fotg210_ep *ep[5];
 </pre>
 
 <p>
-But indexing uses:
+Valid index range: 0–4
 </p>
-
-<pre>
-USB_ENDPOINT_NUMBER_MASK = 0x0f
-</pre>
 
 <p>
-Heap layout:
+Heap layout constraint:
 </p>
 
 <pre>
-ep[5] @ offset 952 → kmalloc-1k boundary at 1024
+ep[] starts at offset 952 in struct fotg210_udc
+kmalloc-1k boundary at 1024 bytes
 </pre>
 
 <ul>
-<li>0–4: valid</li>
-<li>5–8: intra-object corruption</li>
-<li>9–15: slab OOB</li>
+<li>0–4 → valid endpoints</li>
+<li>5–8 → intra-object overwrite region</li>
+<li>9–15 → slab out-of-bounds access</li>
 </ul>
+</div>
 
-<h2>4. Vulnerability 1 — clear_feature OOB dereference</h2>
+<div class="section">
+<h2>Attack surface</h2>
+
+<p>
+USB SETUP packets are read directly from hardware FIFO and copied into driver state:
+</p>
+
+<pre>
+fotg210_rdsetupp()
+  → ioread32(FOTG210_CXPORT)
+  → ctrl structure populated
+  → dispatched to request handlers
+</pre>
+
+<p>
+No validation is performed on <code>wIndex</code> before it is used in endpoint selection.
+</p>
+</div>
+
+<div class="section">
+<h2>Vulnerability 1 — clear_feature OOB dereference</h2>
 
 <pre>
 ep = fotg210->ep[ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK];
@@ -83,7 +161,7 @@ ep->wedged
 </pre>
 
 <p>
-The pointer is immediately dereferenced without validation.
+The pointer is derived from an unchecked index and immediately dereferenced.
 </p>
 
 <pre>
@@ -93,19 +171,20 @@ Read of size 8 at addr ffff888008d9ec30 by task insmod/61
 fotg210_clear_feature+0x2ba/0x2d0
 poc_init+0x1a7/0xff0
 
-The buggy address is located 120 bytes to the right of allocated 952-byte region
+The buggy address is located 120 bytes beyond a 952-byte allocation
 </pre>
 
-<p>
-Secondary crash:</p>
+<p>Secondary failure:</p>
 
 <pre>
 KASAN: null-ptr-deref in range [0x0000000000000060-0x0000000000000067]
 RIP: fotg210_clear_feature+0x158/0x2d0
 RBP: 0x0000000000000000
 </pre>
+</div>
 
-<h2>5. Vulnerability 2 — set_feature MMIO corruption chain</h2>
+<div class="section">
+<h2>Vulnerability 2 — set_feature MMIO corruption chain</h2>
 
 <pre>
 ep = fotg210->ep[epnum];
@@ -113,7 +192,8 @@ fotg210_set_epnstall(ep);
 </pre>
 
 <p>
-OOB pointer fields influence MMIO computation and register writes.
+Fields from the OOB endpoint pointer are used to compute MMIO register addresses,
+allowing heap corruption to influence hardware register access.
 </p>
 
 <pre>
@@ -122,8 +202,6 @@ Read of size 8 at addr ffff888008d9d430 by task insmod/62
 
 fotg210_set_feature+0x274/0x2a0
 poc_init+0x1a7/0xff0
-
-The buggy address is located 120 bytes to the right of allocated 952-byte region
 </pre>
 
 <p>Secondary crash:</p>
@@ -133,15 +211,17 @@ KASAN: null-ptr-deref in range [0x0000000000000048-0x000000000000004f]
 RIP: fotg210_set_epnstall+0x26/0x230
 RDI: 0x0000000000000048
 </pre>
+</div>
 
-<h2>6. Vulnerability 3 — get_status information leak path</h2>
+<div class="section">
+<h2>Vulnerability 3 — get_status information leak path</h2>
 
 <pre>
 fotg210_is_epnstall(fotg210->ep[epnum]);
 </pre>
 
 <p>
-OOB-derived fields are used in MMIO read path and propagated into USB response buffer.
+OOB-derived endpoint fields influence MMIO reads and are propagated back into USB responses.
 </p>
 
 <pre>
@@ -150,8 +230,6 @@ Read of size 8 at addr ffff888008d87c30 by task insmod/63
 
 fotg210_get_status+0x465/0x4a0
 poc_init+0x1a6/0xff0
-
-The buggy address is located 120 bytes to the right of allocated 952-byte region
 </pre>
 
 <p>Secondary crash:</p>
@@ -161,17 +239,45 @@ KASAN: null-ptr-deref in range [0x0000000000000048-0x000000000000004f]
 RIP: fotg210_get_status+0x21b/0x4a0
 RDI: 0x0000000000000048
 </pre>
+</div>
 
-<h2>7. Impact</h2>
+<div class="section">
+<h2>Impact</h2>
 
 <ul>
-<li>Kernel slab out-of-bounds read</li>
-<li>Cross-object heap interpretation</li>
-<li>MMIO register manipulation via corrupted struct fields</li>
-<li>Information leakage via USB response path</li>
+<li>Slab out-of-bounds reads in kernel heap</li>
+<li>Cross-object memory interpretation via struct pointer reuse</li>
+<li>Indirect MMIO register manipulation via corrupted endpoint fields</li>
+<li>Information disclosure via USB control response path</li>
 </ul>
+</div>
 
-<h2>8. Fix</h2>
+<div class="section">
+<h2>Root cause</h2>
+
+<p>
+The driver assumes that:
+</p>
+
+<pre>
+(wIndex & 0x0f) is always a valid endpoint index
+</pre>
+
+<p>
+This assumption breaks because the mask does not enforce the actual array bounds:
+</p>
+
+<pre>
+FOTG210_MAX_NUM_EP = 5
+</pre>
+
+<p>
+No secondary validation exists before dereferencing <code>fotg210->ep[]</code>.
+</p>
+</div>
+
+<div class="section">
+<h2>Fix</h2>
 
 <pre>
 u8 epnum = ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK;
@@ -185,16 +291,20 @@ struct fotg210_ep *ep = fotg210->ep[epnum];
 </pre>
 
 <p>
-All accesses must validate before dereferencing.
+All endpoint accesses must validate the derived index before dereferencing.
 </p>
+</div>
 
+<div class="section">
 <h2>Author</h2>
 
 <p>
 Pavitra Jha<br>
 Offensive Security Researcher<br>
-Kernel / Exploitation Research
+Kernel / Driver Exploitation Research
 </p>
+
+</div>
 
 </article>
 
