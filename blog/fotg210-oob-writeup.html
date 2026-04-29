@@ -28,24 +28,8 @@ ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK
 </pre>
 
 <p>
-This produces values 0–15 with no bounds validation before indexing <code>fotg210->ep[epnum]</code>.
+This produces values 0–15 with no bounds validation before indexing <code>fotg210->ep[epnum]</code>. A malicious USB host can trigger slab OOB reads beyond the <code>fotg210_udc</code> allocation.
 </p>
-
-<p>
-A malicious USB host can send a crafted SETUP packet with <code>wIndex >= 9</code>, triggering slab-out-of-bounds reads beyond the <code>fotg210_udc</code> allocation and immediate dereference in multiple execution paths.
-</p>
-
-<p>
-All three vulnerabilities are independently confirmed by KASAN slab-out-of-bounds reports on kernel 7.0.0-rc7+ via PoC modules:
-</p>
-
-<ul>
-<li>poc1_clear_feature.ko</li>
-<li>poc2_set_feature.ko</li>
-<li>poc3_get_status.ko</li>
-</ul>
-
-<hr>
 
 <h2>1. Environment</h2>
 
@@ -56,22 +40,13 @@ KASAN     : enabled (generic + inline)
 KASLR     : disabled (nokaslr)
 </pre>
 
-<hr>
-
 <h2>2. Threat Model</h2>
 
 <p>
-USB device controller runs on the peripheral side. Attacker is a malicious USB host.
-No authentication required. Attack surface is USB SETUP packet processing.
+USB device controller runs in peripheral mode. Attacker is a malicious USB host. No authentication required. Attack surface is USB SETUP packet handling.
 </p>
-
-<hr>
 
 <h2>3. Root Cause</h2>
-
-<p>
-Structure:
-</p>
 
 <pre>
 #define FOTG210_MAX_NUM_EP 5
@@ -79,28 +54,20 @@ struct fotg210_ep *ep[5];
 </pre>
 
 <p>
-But index is derived from:
+But indexing uses:
 </p>
 
 <pre>
-USB_ENDPOINT_NUMBER_MASK = 0x0f   // 0–15
+USB_ENDPOINT_NUMBER_MASK = 0x0f
 </pre>
 
 <p>
-No bounds validation exists before indexing.
-</p>
-
-<p>
-Heap layout confirms ep[] sits near end of struct:
+Heap layout:
 </p>
 
 <pre>
 ep[5] @ offset 952 → kmalloc-1k boundary at 1024
 </pre>
-
-<p>
-Thus:
-</p>
 
 <ul>
 <li>0–4: valid</li>
@@ -108,11 +75,7 @@ Thus:
 <li>9–15: slab OOB</li>
 </ul>
 
-<hr>
-
-<h2>4. Vulnerabilities</h2>
-
-<h3>Vuln 1 — clear_feature OOB dereference</h3>
+<h2>4. Vulnerability 1 — clear_feature OOB dereference</h2>
 
 <pre>
 ep = fotg210->ep[ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK];
@@ -120,12 +83,29 @@ ep->wedged
 </pre>
 
 <p>
-Out-of-bounds pointer is dereferenced immediately, leading to crash or struct reinterpretation of adjacent heap memory.
+The pointer is immediately dereferenced without validation.
 </p>
 
-<hr>
+<pre>
+BUG: KASAN: slab-out-of-bounds in fotg210_clear_feature+0x2ba/0x2d0
+Read of size 8 at addr ffff888008d9ec30 by task insmod/61
 
-<h3>Vuln 2 — set_feature MMIO corruption chain</h3>
+fotg210_clear_feature+0x2ba/0x2d0
+poc_init+0x1a7/0xff0
+
+The buggy address is located 120 bytes to the right of allocated 952-byte region
+</pre>
+
+<p>
+Secondary crash:</p>
+
+<pre>
+KASAN: null-ptr-deref in range [0x0000000000000060-0x0000000000000067]
+RIP: fotg210_clear_feature+0x158/0x2d0
+RBP: 0x0000000000000000
+</pre>
+
+<h2>5. Vulnerability 2 — set_feature MMIO corruption chain</h2>
 
 <pre>
 ep = fotg210->ep[epnum];
@@ -133,61 +113,65 @@ fotg210_set_epnstall(ep);
 </pre>
 
 <p>
-OOB pointer fields (<code>fotg210</code>, <code>dir_in</code>, <code>epnum</code>) are used to compute MMIO register addresses:
+OOB pointer fields influence MMIO computation and register writes.
 </p>
 
 <pre>
-iowrite32(value, reg);
+BUG: KASAN: slab-out-of-bounds in fotg210_set_feature+0x274/0x2a0
+Read of size 8 at addr ffff888008d9d430 by task insmod/62
+
+fotg210_set_feature+0x274/0x2a0
+poc_init+0x1a7/0xff0
+
+The buggy address is located 120 bytes to the right of allocated 952-byte region
 </pre>
 
-<p>
-Heap corruption directly influences hardware register access.
-</p>
+<p>Secondary crash:</p>
 
-<hr>
+<pre>
+KASAN: null-ptr-deref in range [0x0000000000000048-0x000000000000004f]
+RIP: fotg210_set_epnstall+0x26/0x230
+RDI: 0x0000000000000048
+</pre>
 
-<h3>Vuln 3 — get_status information leak path</h3>
+<h2>6. Vulnerability 3 — get_status information leak path</h2>
 
 <pre>
 fotg210_is_epnstall(fotg210->ep[epnum]);
 </pre>
 
 <p>
-OOB-derived fields are used in:
+OOB-derived fields are used in MMIO read path and propagated into USB response buffer.
 </p>
 
 <pre>
-ioread32(reg);
+BUG: KASAN: slab-out-of-bounds in fotg210_get_status+0x465/0x4a0
+Read of size 8 at addr ffff888008d87c30 by task insmod/63
+
+fotg210_get_status+0x465/0x4a0
+poc_init+0x1a6/0xff0
+
+The buggy address is located 120 bytes to the right of allocated 952-byte region
 </pre>
 
-<p>
-Result propagates into USB response via <code>ep0_data</code>.
-</p>
-
-<hr>
-
-<h2>5. KASAN Summary</h2>
+<p>Secondary crash:</p>
 
 <pre>
-BUG: slab-out-of-bounds in fotg210_* functions
-Read past kmalloc-1k boundary
-Offset overflow ~120 bytes beyond allocated region
+KASAN: null-ptr-deref in range [0x0000000000000048-0x000000000000004f]
+RIP: fotg210_get_status+0x21b/0x4a0
+RDI: 0x0000000000000048
 </pre>
 
-<hr>
-
-<h2>6. Impact</h2>
+<h2>7. Impact</h2>
 
 <ul>
-<li>Kernel slab OOB read</li>
+<li>Kernel slab out-of-bounds read</li>
 <li>Cross-object heap interpretation</li>
-<li>MMIO address manipulation via corrupted struct fields</li>
-<li>Information leak via USB control response</li>
+<li>MMIO register manipulation via corrupted struct fields</li>
+<li>Information leakage via USB response path</li>
 </ul>
 
-<hr>
-
-<h2>7. Fix</h2>
+<h2>8. Fix</h2>
 
 <pre>
 u8 epnum = ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK;
@@ -203,8 +187,6 @@ struct fotg210_ep *ep = fotg210->ep[epnum];
 <p>
 All accesses must validate before dereferencing.
 </p>
-
-<hr>
 
 <h2>Author</h2>
 
