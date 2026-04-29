@@ -1,1 +1,0 @@
-async function loadBlogs(){const box=document.querySelector('.posts'); if(!box) return; try{const posts=await fetch('blogs.json').then(r=>r.json()); box.innerHTML=posts.map(p=>`<article class="timeline"><a href="${p.url}"><strong>${p.title}</strong><span>${p.summary}</span></a></article>`).join('')}catch{box.innerHTML='<p>No public write-ups yet.</p>'}} loadBlogs();
