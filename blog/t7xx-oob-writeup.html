@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>t7xx WWAN OOB Read</title>
+<link rel="stylesheet" href="../style.css" />
+
+<style>
+/* Project Zero-like override layer */
+body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #ffffff;
+    color: #111;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+h2 {
+    font-size: 18px;
+    margin-top: 40px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 6px;
+}
+
+p {
+    margin: 12px 0;
+}
+
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+}
+
+pre {
+    background: #f6f8fa;
+    border: 1px solid #e5e7eb;
+    padding: 14px;
+    overflow-x: auto;
+    font-size: 13px;
+}
+
+.meta {
+    color: #555;
+    font-size: 13px;
+}
+
+.section {
+    margin-top: 20px;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 30px 0;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>t7xx WWAN driver: out-of-bounds read via unvalidated port_count</h1>
+
+<p class="meta">
+MediaTek t7xx WWAN driver | Linux kernel | slab OOB read in modem control message handling
+</p>
+</header>
+
+<section class="section">
+
+<h2>Summary</h2>
+
+<p>
+An out-of-bounds read exists in the <code>t7xx</code> WWAN driver due to an unchecked
+<code>port_count</code> field in a modem-supplied control message. The value is used directly as a loop bound over a flexible array member without validating that the backing buffer contains sufficient data.
+</p>
+
+<p>
+Because this message originates from modem firmware via DMA, the kernel assumes structural correctness of fields that are fully attacker-controlled in a compromised modem scenario.
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Vulnerability details</h2>
+
+<p>The message format:</p>
+
+<pre>
+struct port_msg {
+    __le32 head_pattern;
+    __le32 info;          // contains port_count
+    __le32 tail_pattern;
+    __le32 data[];
+};
+</pre>
+
+<p>
+The vulnerable field is extracted as:
+</p>
+
+<pre>
+port_count = FIELD_GET(PORT_MSG_PRT_CNT,
+                       le32_to_cpu(port_msg->info));
+</pre>
+
+<p>
+It is then used directly as a loop bound:
+</p>
+
+<pre>
+for (i = 0; i < port_count; i++) {
+    u32 port_info = le32_to_cpu(port_msg->data[i]); // OOB READ
+}
+</pre>
+
+<p>
+No check ensures that <code>skb->len</code> is sufficient for <code>port_count</code> entries.
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Root cause</h2>
+
+<p>
+The driver assumes that modem-provided metadata fields are internally consistent with buffer size.
+This assumption is invalid in the presence of a compromised or malicious modem firmware.
+</p>
+
+<pre>
+Missing constraint:
+skb->len >= sizeof(struct port_msg) + (port_count * sizeof(u32))
+</pre>
+
+</section>
+
+<section class="section">
+
+<h2>Crash report (KASAN)</h2>
+
+<pre>
+BUG: KASAN: slab-out-of-bounds in t7xx_port_enum_msg_handler+0x1ae/0x1c0
+Read of size 4 at addr ffff888008654d8c
+
+Allocated object:
+kmalloc-16 (12 bytes used)
+
+[ffff888008654d80, ffff888008654d8c)
+
+OOB occurs at:
+base + 0x0c → data[0]
+</pre>
+
+<p>
+The first out-of-bounds access happens immediately at <code>data[0]</code> when the structure only contains 12 bytes (no flexible array allocation).
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Impact</h2>
+
+<ul>
+<li>Kernel slab out-of-bounds read</li>
+<li>Exposure of adjacent heap memory</li>
+<li>Undefined values influencing channel logic</li>
+<li>Potential control flow impact in downstream handlers</li>
+</ul>
+
+<p>
+In worst-case configurations, the loop bound allows reads far beyond the allocated object depending on <code>port_count</code>.
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Fix</h2>
+
+<p>
+The correct fix is to validate message length before iterating:
+</p>
+
+<pre>
+if (skb->len < struct_size(port_msg, data, port_count))
+    return -EINVAL;
+</pre>
+
+<p>
+Optionally enforce an upper bound:
+</p>
+
+<pre>
+if (port_count > T7XX_MAX_PORTS)
+    return -EINVAL;
+</pre>
+
+</section>
+
+<section class="section">
+
+<h2>Affected versions</h2>
+
+<p>
+Linux kernel v5.18-rc1 through latest mainline (April 2026).
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Notes</h2>
+
+<p>
+This class of bug is common in modem-facing drivers where DMA-provided control messages are partially validated but not structurally bounded.
+</p>
+
+</section>
+
+</div>
+
+</body>
+</html>
