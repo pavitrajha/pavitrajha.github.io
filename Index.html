@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Pavitra Jha
+    </title>
+    <link rel="stylesheet" href="style.css" />
+    <meta property="og:title" content="Pavitra Jha" />
+    <meta property="og:description" content="Kernel and browser security research since age 9." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://pavitrajha.github.io" />
+    <meta property="og:image" content="https://pavitrajha.github.io/preview.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Pavitra Jha" />
+    <meta name="twitter:description" content="Kernel and browser security research since age 9." />
+    <meta name="twitter:image" content="https://pavitrajha.github.io/preview.png" />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="navbar-inner">
+        <div class="brand">
+          PAVITRA JHA
+        </div>
+        <div class="nav-links">
+          <a href="#public-record">          Public Record
+</a>
+          <a href="#blog">          Vulnerability Research
+</a>
+          <a href="#recognition">          Recognition
+</a>
+          <a href="#capability">          Capability
+</a>
+          <a href="#fun-facts">          Fun Facts
+</a>
+          <a href="#contact">          Contact
+</a>
+        </div>
+      </div>
+    </nav>
+    <div class="container">
+      <header>
+        <h1>
+          Pavitra Jha
+        </h1>
+        <p class="sub">
+          Hey, I'm Pavitra. 16, working on browser, Android, and Linux kernel security since I was 9.
+        </p>
+        <p class="sub">
+          Focus: execution engines, kernel attack surfaces, sandbox boundaries, privilege escalation paths in production systems.
+        </p>
+        <p class="sub">
+          things about me:
+        </p>
+        <ul>
+          <li>
+            kernel bug hunter - Linux driver memory corruption, mostly USB/network stacks
+          </li>
+          <li>
+            Philips Hall of Honors - ROP'd a stack overflow in medical imaging firmware into RCE
+          </li>
+          <li>
+            Oracle CPU Advisory - found an info disclosure bug exposing 70k+ users' data
+          </li>
+          <li>
+            CVE-2026-43495 - OOB read in the t7xx WWAN driver, backported to 6 stable trees
+          </li>
+          <li>
+            Top 100 Bug Hunters, Google, 2022
+          </li>
+        </ul>
+      </header>
+      <!-- ===================== -->
+      <!-- PUBLIC RECORD -->
+      <!-- ===================== -->
+      <section id="public-record">
+        <h2>
+          Selected Public Record
+        </h2>
+        <div class="card">
+          Linux Kernel Security Contributions
+          <br />
+          Kernel work - driver-level memory safety bugs found and fixed, patches discussed upstream with maintainers across multiple subsystems.
+          <br />
+          <a href="https://lore.kernel.org/all/?q=Pavitra+Jha">          Linux Kernel Mailing List (LKML)
+</a>
+        </div>
+        <div class="card">
+          Philips Healthcare Security Vulnerability (Firmware ROP / Image Management System 15.1)
+          <br />
+          Found a stack-based buffer overflow in the processing component of Philips Image Management System 15.1 firmware. Overflowed the buffer, built a ROP chain, got arbitrary code execution on host medical imaging hardware. Reported through Philips Product Security - they fixed it and put me in the 2026 Hall of Honors instead of assigning a CVE.
+          <br />
+          <a href="https://www.philips.com/a-w/security/coordinated-vulnerability-disclosure/hall-of-honors.html">          Philips Hall of Honors
+</a>
+        </div>
+        <div class="card">
+          Oracle Security Issue (Customer Data Information Disclosure)
+          <br />
+          Found an info disclosure bug in Oracle's web infrastructure exposing data for 70,000+ users - payment details, emails, credentials, physical addresses, org info. Oracle fixed it by killing the endpoint entirely.
+          <br />
+          <a href="https://www.oracle.com/security-alerts/cpujul2024.html">          Oracle CPU Advisory
+</a>
+        </div>
+        <div class="card">
+          Conference Research: Prototype Pollution and ReDoS
+          <br />
+          Talked prototype pollution and ReDoS patterns I've actually seen in production JS apps.
+          <br />
+          <a href="https://www.linkedin.com/posts/cybersherlock_cybersecurity-nullmeetmumbai-itminstitute-activity-7195110088628416512-Cg-U">          Conference Post
+</a>
+        </div>
+        <div class="card">
+          Nullcon Goa 2023 Scholarship
+          <br />
+          Selected for a scholarship at Nullcon Goa 2023 - full conference pass, for research work.
+          <br />
+          <a href="https://www.linkedin.com/posts/nullcon_nullcongoa2023-infosec-conference-activity-7102622075843993600-64dZ">          Nullcon Post
+</a>
+        </div>
+        <div class="card">
+          Podcast: Hackers Behind the Code
+          <br />
+          Episode on how I actually find and exploit bugs - process, not theory.
+          <br />
+          <a href="https://open.spotify.com/episode/4q6rhJsXgfwRTaq5ts32MN">          Spotify Episode
+</a>
+        </div>
+        <div class="card">
+          Interview: XSS Rat
+          <br />
+          Long interview going deep on my exploitation workflow.
+          <br />
+          <a href="https://www.youtube.com/watch?v=K3DENG8kdYA">          YouTube Video
+</a>
+        </div>
+      </section>
+      <!-- ===================== -->
+      <!-- BLOG -->
+      <!-- ===================== -->
+      <section id="blog">
+        <h2>
+          Selected Vulnerability Research
+        </h2>
+        <p>
+          Write-ups on kernel exploitation, driver-level memory corruption, and system-level vulnerability analysis across real attack surfaces.
+        </p>
+        <div class="card">
+          Two Oracle, hundreds of thousands of orgs - the Google Workspace auth flaw
+          <br />
+          Coming Soon
+        </div>
+        <div class="card">
+          Unchecked modem input: OOB read in the Linux kernel t7xx WWAN driver (CVE-2026-43495)
+          <br />
+          <a href="blog/t7xx-oob-writeup.html">          Read Writeup
+</a>
+        </div>
+        <div class="card">
+          wIndex out of bounds: host-controlled memory corruption in the MAX3420 UDC driver
+          <br />
+          <a href="blog/max3420-oob-writeup.html">          Read Writeup
+</a>
+        </div>
+        <div class="card">
+          FOTG210 USB device controller: slab OOB in the X3 functions
+          <br />
+          <a href="blog/fotg210-oob-writeup.html">          Read Writeup
+</a>
+        </div>
+        <div class="card">
+          Race conditions and deadlocks: use-after-free in the Silicon Labs wfx wireless driver
+          <br />
+          <a href="blog/wfx-use-after-free-writeup.html">          Read Writeup
+</a>
+        </div>
+        <div class="card">
+          NTFS3 file system driver: two OOB flaws in log_replay infrastructure
+          <br />
+          <a href="blog/ntfs3-log_replay-oob-writeup.html">          Read Writeup
+</a>
+        </div>
+      </section>
+      <!-- ===================== -->
+      <!-- RECOGNITION -->
+      <!-- ===================== -->
+      <section id="recognition">
+        <h2>
+          Recognition
+        </h2>
+        <ul>
+          <li>
+            Hall of Fame: Google, Oracle, NASA, Philips, MoonPay
+          </li>
+          <li>
+            Indian Book of Records - youngest ethical hacker in India
+          </li>
+          <li>
+            Spoke at multiple security conferences
+          </li>
+          <li>
+            Nullcon Goa 2023 scholarship
+          </li>
+          <li>
+            29th / 73,000 teams, national hackathon (Codingal)
+          </li>
+          <li>
+            Top 100 Bug Hunters, Google, 2022
+          </li>
+          <li>
+            Contract work, Thane Cyber Crime Department
+          </li>
+        </ul>
+      </section>
+      <!-- ===================== -->
+      <!-- CAPABILITY -->
+      <!-- ===================== -->
+      <section id="capability">
+        <h2>
+          Technical Capability
+        </h2>
+        <div class="card">
+          Browser Security: V8 internals, JIT pipeline bugs, memory corruption primitives, exploitation under modern mitigations
+        </div>
+        <div class="card">
+          Android Security: framework attack surfaces, Binder IPC, SELinux policy, kernel interaction paths
+        </div>
+        <div class="card">
+          Linux Kernel Security: driver flaws, race conditions, memory safety issues, upstream fix analysis
+        </div>
+        <div class="card">
+          Sandbox &amp; Mitigations: ASLR, KASLR, CFG, CFI, PAC - sandbox escape conditions
+        </div>
+        <div class="card">
+          Reverse Engineering: ARM64, x86, x64 - Windows, Linux, Android
+        </div>
+        <div class="card">
+          Fuzzing: structured fuzzing, crash triage, exploitability validation, harness design
+        </div>
+        <div class="card">
+          Source Audit: large-scale code review, architecture-level vulnerability discovery
+        </div>
+      </section>
+      <!-- ===================== -->
+      <!-- FUN FACTS (placeholder - send me 4-5 and I'll slot them in) -->
+      <!-- ===================== -->
+      <section id="fun-facts">
+        <h2>
+          Fun Facts
+        </h2>
+        <ul>
+          <li>
+            I love Badminton!
+          </li>
+          <li>
+            I love to listen Phonks!
+          </li>
+          <li>
+            My first vuln I reported to google was literally a 12 slide presentation about them not using httponly flag on a cookie.
+          </li>
+          <li>
+            I have a weird habit of making notes of technologies I see when I go out as "Potential Targets".
+          </li>
+        </ul>
+      </section>
+      <section>
+        <h2>
+          Confidential Work Statement
+        </h2>
+        <p>
+          Most of what I actually do never goes public. It's NDA work, or it ships as a silent upstream patch. I only started posting a small slice of it recently - the public writeups on this page are a minor fraction of what I've actually done.
+        </p>
+      </section>
+      <section id="contact">
+        <h2>
+          Contact
+        </h2>
+        <p>
+          Email:
+          <a href="mailto:jhapavitra98@gmail.com">          jhapavitra98@gmail.com
+</a>
+        </p>
+        <p>
+          LinkedIn:
+          <a href="https://linkedin.com/in/cybersherlock">          linkedin.com/in/cybersherlock
+</a>
+        </p>
+      </section>
+    </div>
+  </body>
+</html>
