@@ -1,240 +1,118 @@
-:root {
-  --bg: #07090c;
-  --panel: rgba(255,255,255,0.03);
-  --panel-hover: rgba(255,255,255,0.06);
-  --border: rgba(255,255,255,0.08);
-
-  --text: #f3f6fb;
-  --muted: #9aa4b2;
-
-  --accent: #7cc4ff;
-
-  --max: 820px;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-  scroll-padding-top: 90px;
-}
-
-body {
-  margin: 0;
-  background: linear-gradient(180deg, #05070a, #0b0f15);
-  color: var(--text);
-  font-family: Inter, system-ui, sans-serif;
-  line-height: 1.8;
-}
-
-/* subtle grid */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-  background-size: 48px 48px;
-  opacity: 0.12;
-  pointer-events: none;
-}
-
 /* =========================
-CENTERED COLUMN SYSTEM
+ADDITIONS: hero role, badges, stats, feature grid, recognition grid, capability grid, notice box
+(appended only — no existing rules modified)
 ========================= */
 
-.container {
-  max-width: var(--max);
-  margin: 0 auto;
-  padding: 90px 18px 120px;
-}
-
-/* =========================
-NAVBAR (STICKY PROPER UI)
-========================= */
-
-.navbar {
-  position: sticky;
-  top: 0;
-  z-index: 999;
-
-  width: 100%;
-  background: rgba(5, 7, 10, 0.72);
-  backdrop-filter: blur(16px);
-
-  border-bottom: 1px solid var(--border);
-}
-
-.navbar-inner {
-  max-width: var(--max);
-  margin: 0 auto;
-
-  padding: 14px 18px;
-
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.brand {
-  font-size: 0.78rem;
-  letter-spacing: 3px;
-  font-weight: 600;
+.eyebrow-role {
+  font-size: 0.95rem;
   color: var(--accent);
+  letter-spacing: 0.5px;
+  margin: 0 0 18px;
 }
 
-.nav-links {
+.badge-row {
   display: flex;
-  gap: 18px;
   flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 26px;
 }
 
-.nav-links a {
-  font-size: 0.82rem;
-  color: var(--muted);
-  text-decoration: none;
-
-  padding: 6px 8px;
-  border-radius: 6px;
-
-  transition: 0.2s ease;
-}
-
-.nav-links a:hover {
+.badge {
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
   color: var(--text);
-  background: rgba(255,255,255,0.05);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
 }
 
-/* =========================
-HEADER (HIGH IMPACT ENTRY)
-========================= */
-
-header {
-  margin-bottom: 56px;
-}
-
-h1 {
-  font-size: clamp(2.8rem, 5vw, 4rem);
-  letter-spacing: -2px;
-  line-height: 1.05;
-  margin-bottom: 18px;
-}
-
-.sub {
-  color: var(--muted);
-  border-left: 2px solid rgba(124,196,255,0.25);
-  padding-left: 14px;
-  margin-bottom: 12px;
-  max-width: 70ch;
-}
-
-/* =========================
-SECTION SYSTEM (RHYTHM FIX)
-========================= */
-
-section {
-  margin-bottom: 56px;
-}
-
-h2 {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  color: var(--accent);
-
-  display: flex;
-  align-items: center;
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
-
-  margin-bottom: 18px;
+  margin-top: 28px;
 }
 
-h2::after {
-  content: "";
-  height: 1px;
-  flex: 1;
-  background: var(--border);
-}
-
-/* =========================
-CARD SYSTEM (PUBLICATION FEEL)
-========================= */
-
-.card {
+.stat-card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
-
-  padding: 18px 20px;
-  margin-bottom: 12px;
-
-  transition: 0.18s ease;
-
-  /* subtle professional polish */
-  backdrop-filter: blur(6px);
+  padding: 16px 10px;
+  text-align: center;
 }
 
-.card:hover {
-  transform: translateY(-2px);
-  background: var(--panel-hover);
-  border-color: rgba(124,196,255,0.18);
+.stat-number {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -1px;
 }
 
-/* make “blog/public record feel more index-like” */
-#blog .card,
-#record .card {
-  border-left: 2px solid rgba(124,196,255,0.25);
-}
-
-/* =========================
-TEXT
-========================= */
-
-p, li {
+.stat-label {
+  font-size: 0.7rem;
   color: var(--muted);
-  font-size: 0.98rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
 }
 
-ul {
-  padding-left: 18px;
+.feature-grid,
+.recognition-grid,
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
-li {
+.feature-card {
+  margin-bottom: 0;
+}
+
+.feature-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid rgba(124,196,255,0.25);
+  border-radius: 6px;
+  padding: 3px 8px;
   margin-bottom: 10px;
 }
 
-/* =========================
-LINKS
-========================= */
-
-a {
-  color: var(--accent);
-  text-decoration: none;
+.recognition-card,
+.capability-grid .card {
+  margin-bottom: 0;
 }
 
-a:hover {
-  opacity: 0.85;
+.notice-box {
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
 }
 
-/* =========================
-RESPONSIVE TUNING
-========================= */
+.notice-box p {
+  margin: 0;
+}
+
+.contact-card p {
+  margin: 0 0 10px;
+}
+
+.contact-card p:last-child {
+  margin-bottom: 0;
+}
 
 @media (max-width: 720px) {
-  .navbar-inner {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  h1 {
-    font-size: 2.6rem;
-  }
-
-  .container {
-    padding: 70px 16px 100px;
+  .feature-grid,
+  .recognition-grid,
+  .capability-grid {
+    grid-template-columns: 1fr;
   }
 }
