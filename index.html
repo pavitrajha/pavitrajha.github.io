@@ -24,6 +24,8 @@
           PAVITRA JHA
         </div>
         <div class="nav-links">
+          <a href="#featured-research">          Featured Research
+</a>
           <a href="#public-record">          Public Record
 </a>
           <a href="#blog">          Vulnerability Research
@@ -47,6 +49,17 @@
         <h1>
           Pavitra Jha
         </h1>
+        <p class="eyebrow-role">Independent Vulnerability Researcher</p>
+        <div class="badge-row">
+          <span class="badge">Linux Kernel</span>
+          <span class="badge">Browser Exploitation</span>
+          <span class="badge">Android Security</span>
+          <span class="badge">Memory Corruption</span>
+          <span class="badge">Kernel CVEs</span>
+          <span class="badge">Exploit Development</span>
+          <span class="badge">Reverse Engineering</span>
+          <span class="badge">Fuzzing</span>
+        </div>
         <p class="sub">
           Hey, I'm Pavitra. 16, working on Web & API Application, browser, Android, and Linux kernel security since I was 9.
         </p>
@@ -72,7 +85,84 @@
             Top 100 Bug Hunters, Google, 2022
           </li>
         </ul>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-number">1</div>
+            <div class="stat-label">Assigned CVE</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">5</div>
+            <div class="stat-label">Public Kernel Writeups</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">5</div>
+            <div class="stat-label">Hall of Fame Programs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">16</div>
+            <div class="stat-label">Age</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">9</div>
+            <div class="stat-label">Research Since Age</div>
+          </div>
+        </div>
       </header>
+
+      <!-- ===================== -->
+      <!-- FEATURED RESEARCH -->
+      <!-- ===================== -->
+      <section id="featured-research">
+        <h2>
+          Featured Research
+        </h2>
+        <div class="feature-grid">
+          <div class="card feature-card">
+            <div class="feature-tag">CVE-2026-43495</div>
+            Unchecked modem input: OOB read in the Linux kernel t7xx WWAN driver
+            <br />
+            <a href="blog/t7xx-oob-writeup.html">          Read Writeup
+</a>
+          </div>
+          <div class="card feature-card">
+            <div class="feature-tag">Linux Kernel</div>
+            wIndex out of bounds: host-controlled memory corruption in the MAX3420 UDC driver
+            <br />
+            <a href="blog/max3420-oob-writeup.html">          Read Writeup
+</a>
+          </div>
+          <div class="card feature-card">
+            <div class="feature-tag">Linux Kernel</div>
+            FOTG210 USB device controller: slab OOB in the X3 functions
+            <br />
+            <a href="blog/fotg210-oob-writeup.html">          Read Writeup
+</a>
+          </div>
+          <div class="card feature-card">
+            <div class="feature-tag">Linux Kernel</div>
+            Race conditions and deadlocks: use-after-free in the Silicon Labs wfx wireless driver
+            <br />
+            <a href="blog/wfx-use-after-free-writeup.html">          Read Writeup
+</a>
+          </div>
+          <div class="card feature-card">
+            <div class="feature-tag">Linux Kernel</div>
+            NTFS3 file system driver: two OOB flaws in log_replay infrastructure
+            <br />
+            <a href="blog/ntfs3-log_replay-oob-writeup.html">          Read Writeup
+</a>
+          </div>
+          <div class="card feature-card">
+            <div class="feature-tag">Upstream</div>
+            Linux Kernel Security Contributions - driver-level memory safety bugs found and fixed, patches discussed upstream with maintainers across multiple subsystems
+            <br />
+            <a href="https://lore.kernel.org/all/?q=Pavitra+Jha">          Linux Kernel Mailing List (LKML)
+</a>
+          </div>
+        </div>
+      </section>
+
       <!-- ===================== -->
       <!-- PUBLIC RECORD -->
       <!-- ===================== -->
@@ -185,29 +275,29 @@
         <h2>
           Recognition
         </h2>
-        <ul>
-          <li>
+        <div class="recognition-grid">
+          <div class="card recognition-card">
             Hall of Fame: Google, Oracle, NASA, Philips, MoonPay
-          </li>
-          <li>
+          </div>
+          <div class="card recognition-card">
             Indian Book of Records - youngest ethical hacker in India
-          </li>
-          <li>
+          </div>
+          <div class="card recognition-card">
             Spoke at multiple security conferences
-          </li>
-          <li>
+          </div>
+          <div class="card recognition-card">
             Nullcon Goa 2023 scholarship
-          </li>
-          <li>
+          </div>
+          <div class="card recognition-card">
             29th / 73,000 teams, national hackathon (Codingal)
-          </li>
-          <li>
+          </div>
+          <div class="card recognition-card">
             Top 100 Bug Hunters, Google, 2022
-          </li>
-          <li>
+          </div>
+          <div class="card recognition-card">
             Contract work, Thane Cyber Crime Department
-          </li>
-        </ul>
+          </div>
+        </div>
       </section>
       <!-- ===================== -->
       <!-- CAPABILITY -->
@@ -216,26 +306,28 @@
         <h2>
           Technical Capability
         </h2>
-        <div class="card">
-          Browser Security: V8 internals, JIT pipeline bugs, memory corruption primitives, exploitation under modern mitigations
-        </div>
-        <div class="card">
-          Android Security: framework attack surfaces, Binder IPC, SELinux policy, kernel interaction paths
-        </div>
-        <div class="card">
-          Linux Kernel Security: driver flaws, race conditions, memory safety issues, upstream fix analysis
-        </div>
-        <div class="card">
-          Sandbox &amp; Mitigations: ASLR, KASLR, CFG, CFI, PAC - sandbox escape conditions
-        </div>
-        <div class="card">
-          Reverse Engineering: ARM64, x86, x64 - Windows, Linux, Android
-        </div>
-        <div class="card">
-          Fuzzing: structured fuzzing, crash triage, exploitability validation, harness design
-        </div>
-        <div class="card">
-          Source Audit: large-scale code review, architecture-level vulnerability discovery
+        <div class="capability-grid">
+          <div class="card">
+            Browser Security: V8 internals, JIT pipeline bugs, memory corruption primitives, exploitation under modern mitigations
+          </div>
+          <div class="card">
+            Android Security: framework attack surfaces, Binder IPC, SELinux policy, kernel interaction paths
+          </div>
+          <div class="card">
+            Linux Kernel Security: driver flaws, race conditions, memory safety issues, upstream fix analysis
+          </div>
+          <div class="card">
+            Sandbox &amp; Mitigations: ASLR, KASLR, CFG, CFI, PAC - sandbox escape conditions
+          </div>
+          <div class="card">
+            Reverse Engineering: ARM64, x86, x64 - Windows, Linux, Android
+          </div>
+          <div class="card">
+            Fuzzing: structured fuzzing, crash triage, exploitability validation, harness design
+          </div>
+          <div class="card">
+            Source Audit: large-scale code review, architecture-level vulnerability discovery
+          </div>
         </div>
       </section>
       <!-- ===================== -->
@@ -273,24 +365,28 @@
         <h2>
           Confidential Work Statement
         </h2>
-        <p>
-          Most of what I actually do never goes public. It's NDA work, or it ships as a silent upstream patch. I only started posting a small slice of it recently - the public writeups on this page are a minor fraction of what I've actually done.
-        </p>
+        <div class="notice-box">
+          <p>
+            Most of what I actually do never goes public. It's NDA work, or it ships as a silent upstream patch. I only started posting a small slice of it recently - the public writeups on this page are a minor fraction of what I've actually done.
+          </p>
+        </div>
       </section>
       <section id="contact">
         <h2>
           Contact
         </h2>
-        <p>
-          Email:
-          <a href="mailto:jhapavitra98@gmail.com">          jhapavitra98@gmail.com
+        <div class="card contact-card">
+          <p>
+            Email:
+            <a href="mailto:jhapavitra98@gmail.com">          jhapavitra98@gmail.com
 </a>
-        </p>
-        <p>
-          LinkedIn:
-          <a href="https://linkedin.com/in/cybersherlock">          linkedin.com/in/cybersherlock
+          </p>
+          <p>
+            LinkedIn:
+            <a href="https://linkedin.com/in/cybersherlock">          linkedin.com/in/cybersherlock
 </a>
-        </p>
+          </p>
+        </div>
       </section>
     </div>
   </body>
