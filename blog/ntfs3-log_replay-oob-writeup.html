@@ -39,6 +39,10 @@ h2 {
     padding-bottom: 8px;
     border-bottom: 1px solid #1f2a36;
     color: #f0f0f0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 h3 {
@@ -59,6 +63,18 @@ p {
 .meta {
     color: #9aa4ad;
     font-size: 13px;
+}
+
+/* CVE tag — inline badge next to section headings */
+.cve-tag {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #7fb3ff;
+    border: 1px solid #24405e;
+    background: #111e2c;
+    border-radius: 5px;
+    padding: 2px 8px;
 }
 
 /* Links — subtle, not neon */
@@ -132,12 +148,12 @@ li {
 <header>
 <h1>NTFS3 file system driver: Multiple Heap Corruption Flaws in Log Replay Infrastructure</h1>
 <p class="meta">
-Paragon ntfs3 driver | Linux kernel | Heap OOB X2 | Local Privilege Escalation & Memory Corruption via Malformed Images 
+Paragon ntfs3 driver | Linux kernel | Heap OOB X2 | Local Privilege Escalation &amp; Memory Corruption via Malformed Images | CVE-2026-64532, CVE-2026-64533
 </p>
 </header>
 
 <section class="section">
-    <h2>1. Heap Out-of-Bounds Write via Unvalidated data_off</h2>
+    <h2>1. Heap Out-of-Bounds Write via Unvalidated data_off <span class="cve-tag">CVE-2026-64532</span></h2>
     
     <h3>Summary</h3>
     <p>
@@ -263,7 +279,7 @@ memmove(Add2Ptr(e, le16_to_cpu(e->view.data_off)), data, dlen);
 </section>
 
 <section class="section">
-    <h2>2. Heap Out-of-Bounds Read/Write via lcns_follow</h2>
+    <h2>2. Heap Out-of-Bounds Read/Write via lcns_follow <span class="cve-tag">CVE-2026-64533</span></h2>
     
     <h3>Summary</h3>
     <p>
@@ -359,14 +375,32 @@ while ((dp = enum_rstbl(dptbl, dp))) {
 </section>
 <section class="section">
 
-<h2>Upstream Patch & Timeline</h2>
+<h2>CVE Assignment</h2>
 
 <p>
-The vulnerability was reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
+Both issues were assigned CVE identifiers by the Linux kernel CNA following backport into released stable trees:
+</p>
+
+<ul>
+    <li><span class="cve-tag">CVE-2026-64532</span> — <code>data_off</code> out-of-bounds write (<code>UpdateRecordDataRoot</code> / <code>UpdateRecordDataAllocation</code>), fix commit <code>3e127829e57f</code></li>
+    <li><span class="cve-tag">CVE-2026-64533</span> — <code>lcns_follow</code> out-of-bounds read/write (log_replay conversion), fix commit <code>6a4c53a2e26a</code></li>
+</ul>
+
+<p>
+Both fixes are in Linus's tree and backported to stable branches 5.15, 6.1, 6.6, 6.12, 6.18, and 7.1.
+</p>
+
+</section>
+<section class="section">
+
+<h2>Upstream Patch &amp; Timeline</h2>
+
+<p>
+The vulnerabilities were reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
 </p>
 
 <p>
-<strong>LKML Activity & Patch History:</strong>
+<strong>LKML Activity &amp; Patch History:</strong>
 <a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
 target="_blank"
 rel="noopener noreferrer">
