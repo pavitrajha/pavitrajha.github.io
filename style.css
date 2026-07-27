@@ -165,43 +165,6 @@ h1 {
   max-width: 70ch;
 }
 
-/* stat bar — sits under the header bullets, reads as a dossier strip
-   rather than another row of cards */
-.stat-grid {
-  display: flex;
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border);
-}
-
-.stat-card {
-  flex: 1;
-  text-align: left;
-  padding: 0 18px;
-  border-left: 1px solid var(--border);
-}
-
-.stat-card:first-child {
-  padding-left: 0;
-  border-left: none;
-}
-
-.stat-number {
-  font-size: 1.7rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -1px;
-  line-height: 1.1;
-}
-
-.stat-label {
-  font-size: 0.68rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-top: 6px;
-}
-
 /* =========================
 SECTION SYSTEM (RHYTHM FIX)
 ========================= */
@@ -365,17 +328,6 @@ RESPONSIVE TUNING
 
   .container {
     padding: 70px 16px 100px;
-  }
-
-  .stat-grid {
-    flex-wrap: wrap;
-    row-gap: 18px;
-  }
-
-  .stat-card {
-    flex: 1 1 40%;
-    border-left: none;
-    padding-left: 0;
   }
 
   .feature-grid,
