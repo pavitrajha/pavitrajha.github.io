@@ -399,7 +399,10 @@ index c6956f1df..4e6a6d3e4 100644
 <h2>Upstream Patch & Timeline</h2>
 
 <p>
-Reported upstream to the Ceph client maintainers via the Linux Kernel Mailing List. The patch went through three revisions, with v3 combining both bugs into a single patch per review feedback from Viacheslav Dubeyko and addressing a stale error-code issue flagged by smatch. Reviewed-by was given by Viacheslav Dubeyko (IBM). Assigned CVE-2026-68082, published to the NVD on 2026-08-08, CVSS 9.8 Critical per the kernel.org CNA.
+Reported upstream to the Ceph client maintainers via the Linux Kernel Mailing List. v1 was posted 2026-05-23 as a fix for decode_lockers() alone; v2 (2026-05-28) added the second bare decode after review, and drew a stale-error-code catch from Dan Carpenter's smatch; v3 (2026-06-02) combined both bugs into the single patch shown above and received Reviewed-by from Viacheslav Dubeyko (IBM).
+</p>
+<p>
+Backport history: an initial stable backport attempt failed to apply cleanly to the 5.10, 5.15, 6.1, 6.6, 6.12, and 6.18 trees (2026-07-29). The fix landed directly in mainline stable via 7.1.6 the next day (2026-07-30). The failed backports were resent and merged by Sasha Levin on 2026-08-08, so the patch is now present in <strong>6 stable trees</strong>: 5.10.y, 5.15.y, 6.1.y, 6.6.y, 6.12.y, and 6.18.y, in addition to 7.1.y and current mainline. CVE-2026-68082 was published to the NVD on 2026-08-08, CVSS 9.8 Critical per the kernel.org CNA.
 </p>
 
 <p>
