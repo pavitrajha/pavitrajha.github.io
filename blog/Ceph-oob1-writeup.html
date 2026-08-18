@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Linux libceph decode_lockers() Out-of-Bounds Read</title>
+<link rel="stylesheet" href="../style.css" />
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for "research blog" feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>Linux libceph: Two Unsafe Bare Decodes in decode_lockers() (CVE-2026-68082)</h1>
+<p class="meta">
+Linux Kernel libceph Client | net/ceph/cls_lock_client.c | Slab Memory Safety | Vulnerability Write-up
+</p>
+</header>
+
+<section class="section">
+    <h2>1. Summary</h2>
+    <p>
+        A slab out-of-bounds read vulnerability exists in the Linux kernel's <code>libceph</code> client within <code>decode_lockers()</code> in <code>cls_lock_client.c</code>. Two bare decode operations in this function have no preceding bounds check, letting a malicious or compromised Ceph OSD walk the client past the validated end of its receive buffer.
+    </p>
+    <p>
+        The root cause is a permissive <code>ceph_start_decoding()</code> call. It accepts <code>struct_len=0</code> as valid, because the internal <code>ceph_decode_need(p, end, 0, bad)</code> check always passes for a zero-length requirement. This leaves <code>p == end</code>, and the two bare decodes that follow read past that boundary without ever checking it.
+    </p>
+</section>
+
+<section class="section">
+    <h2>2. Vulnerability Execution Path</h2>
+    <p>
+        The function is reached whenever a kernel client issues the <code>lock.get_info</code> Ceph class method, most commonly during RBD exclusive lock acquisition:
+    </p>
+    <pre>
+net/ceph/osd_client.c
+  - Kernel client sends lock.get_info class method call to an OSD as part of
+    RBD exclusive lock acquisition or general Ceph lock introspection.
+      |
+      v
+net/ceph/cls_lock_client.c : ceph_cls_lock_info()
+  - Receives the OSD reply buffer and hands it to decode_lockers() for parsing.
+      |
+      v
+net/ceph/cls_lock_client.c : decode_lockers()
+  - Calls ceph_start_decoding() to validate the initial struct header.
+  - struct_len=0 is accepted as valid, so p == end on return.
+      |
+      v
+  - Bare ceph_decode_32(p) reads num_lockers with no bounds check. (Bug 1)
+  - decode_locker() loop runs num_lockers times.
+  - Bare ceph_decode_8(p) reads the lock type with no bounds check. (Bug 2)
+    </pre>
+    <p>
+        Any kernel client with an established OSD session can reach this path. No additional privilege beyond normal Ceph client-to-OSD trust is required, which means a compromised OSD in a multi-tenant deployment is a sufficient attacker.
+    </p>
+</section>
+
+<section class="section">
+    <h2>3. Vulnerability Description & Mechanics</h2>
+    <p>
+        <strong>Bug 1: unchecked num_lockers read.</strong> After <code>ceph_start_decoding()</code> returns success with <code>p == end</code>, the very next operation is a bare <code>ceph_decode_32(p)</code>:
+    </p>
+<pre>
+*num_lockers = ceph_decode_32(p);
+</pre>
+    <p>
+        This reads 4 bytes past the validated buffer boundary. The garbage value read from beyond the buffer is passed directly into <code>kzalloc_objs()</code> as the locker allocation count, meaning attacker-influenced heap contents drive an allocation size decision. The sibling function <code>decode_watchers()</code> in <code>osd_client.c</code> already used the safe variant after its own <code>ceph_start_decoding()</code> call; <code>decode_lockers()</code> was the only remaining bare site.
+    </p>
+    <p>
+        <strong>Bug 2: unchecked lock type read.</strong> After the <code>decode_locker()</code> loop runs, a second bare decode reads the lock type:
+    </p>
+<pre>
+*type = ceph_decode_8(p);
+</pre>
+    <p>
+        If an OSD crafts <code>num_lockers</code> so the loop advances <code>p</code> exactly to <code>end</code>, this read also crosses the boundary by one byte. The out-of-bounds byte is written into <code>*type</code> and used by callers as a lock type discriminator, so this bug combines an OOB read with direct influence over downstream lock semantics.
+    </p>
+</section>
+
+<section class="section">
+    <h2>4. Source Code Analysis</h2>
+    <p>
+        Relevant fragment of <code>decode_lockers()</code> prior to the fix:
+    </p>
+<pre>
+if (ret)
+        return ret;
+
+*num_lockers = ceph_decode_32(p);                 /* SINK 1: bare, no bounds check */
+*lockers = kzalloc_objs(**lockers, *num_lockers, GFP_NOIO);
+if (!*lockers)
+        return -ENOMEM;
+
+for (i = 0; i &lt; *num_lockers; i++) {
+        ret = decode_locker(p, end, *lockers + i);
+        if (ret)
+                goto err_free_lockers;
+}
+
+*type = ceph_decode_8(p);                         /* SINK 2: bare, no bounds check */
+s = ceph_extract_encoded_string(p, end, NULL, GFP_NOIO);
+</pre>
+    <p>
+        Fix applied (v3, incorporating review feedback from Viacheslav Dubeyko and a smatch catch from Dan Carpenter on a stale <code>ret</code> value):
+    </p>
+<pre>
+if (ret)
+        return ret;
+
+ceph_decode_32_safe(p, end, *num_lockers, err_inval);
+*lockers = kzalloc_objs(**lockers, *num_lockers, GFP_NOIO);
+if (!*lockers)
+        return -ENOMEM;
+
+for (i = 0; i &lt; *num_lockers; i++) {
+        ret = decode_locker(p, end, *lockers + i);
+        if (ret)
+                goto err_free_lockers;
+}
+
+ret = -EINVAL;
+ceph_decode_8_safe(p, end, *type, err_free_lockers);
+s = ceph_extract_encoded_string(p, end, NULL, GFP_NOIO);
+if (IS_ERR(s)) {
+        ret = PTR_ERR(s);
+        goto err_free_lockers;
+}
+*tag = s;
+return 0;
+
+err_inval:
+        return -EINVAL;
+err_free_lockers:
+        ceph_free_lockers(*lockers, *num_lockers);
+        return ret;
+</pre>
+    <h3>Why the goto targets differ</h3>
+    <p>
+        <code>err_inval</code> is a new label used for the pre-allocation failure path, where <code>*lockers</code> does not exist yet and must not be passed to <code>ceph_free_lockers()</code>. <code>err_free_lockers</code> is the existing label, used once <code>*lockers</code> has been allocated and needs to be released. <code>ret</code> is explicitly set to <code>-EINVAL</code> immediately before <code>ceph_decode_8_safe()</code>; without that assignment, a bounds violation on that decode would fall through to <code>err_free_lockers</code> carrying a stale <code>ret</code> of 0 from the preceding successful loop, silently swallowing the error.
+    </p>
+</section>
+
+<section class="section">
+    <h2>5. KASAN Log & Triage Data</h2>
+    <p>
+        Verified with a KASAN-instrumented kernel module PoC against kernel 7.0.0-rc7 (QEMU/x86_64, KASLR disabled), sending a crafted <code>struct_len=0</code> reply to trigger the bug 1 path:
+    </p>
+<pre>
+==================================================================
+BUG: KASAN: slab-out-of-bounds in ceph_oob3_init+0x251/0xff0 [ceph_oob3_poc]
+Read of size 4 at addr ffff88800a29b76e by task insmod/58
+
+CPU: 0 UID: 0 PID: 58 Comm: insmod Tainted: G           O        7.0.0-rc7-g9c2abf69da83-dirty #15 PREEMPT(lazy)
+Tainted: [O]=OOT_MODULE
+Hardware name: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.17.0-debian-1.17.0-1 04/01/2014
+Call Trace:
+ &lt;TASK&gt;
+ dump_stack_lvl+0x4d/0x70
+ print_report+0x170/0x4f3
+ kasan_report+0xda/0x110
+ ceph_oob3_init+0x251/0xff0 [ceph_oob3_poc]
+ do_one_initcall+0x9a/0x3a0
+ do_init_module+0x27c/0x790
+ load_module+0x4a9a/0x6350
+ init_module_from_file+0x15c/0x180
+ idempotent_init_module+0x21f/0x750
+ __x64_sys_finit_module+0xba/0x120
+ do_syscall_64+0xe2/0x570
+ entry_SYSCALL_64_after_hwframe+0x77/0x7f
+
+Allocated by task 58:
+ kasan_save_stack+0x30/0x50
+ kasan_save_track+0x14/0x30
+ __kasan_kmalloc+0x7f/0x90
+ ceph_oob3_init+0x4d/0xff0 [ceph_oob3_poc]
+ do_one_initcall+0x9a/0x3a0
+ do_init_module+0x27c/0x790
+ load_module+0x4a9a/0x6350
+ init_module_from_file+0x15c/0x180
+ idempotent_init_module+0x21f/0x750
+ __x64_sys_finit_module+0xba/0x120
+ do_syscall_64+0xe2/0x570
+ entry_SYSCALL_64_after_hwframe+0x77/0x7f
+
+The buggy address belongs to the object at ffff88800a29a000
+ which belongs to the cache kmalloc-8k of size 8192
+The buggy address is located 5998 bytes inside of
+ allocated 6000-byte region [ffff88800a29a000, ffff88800a29b770)
+
+Memory state around the buggy address:
+ ffff88800a29b600: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+ ffff88800a29b680: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+&gt;ffff88800a29b700: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc fc
+                                                             ^
+ ffff88800a29b780: fc fc fc fc fc fc fc fc fc fc fc fc fc fc fc fc
+==================================================================
+
+num_lockers=0xccccaaaa (OOB garbage read from beyond the KASAN redzone)
+</pre>
+    <h3>Anatomy of the read</h3>
+    <p>
+        The buggy address sits 5998 bytes into a 6000-byte <code>kmalloc-8k</code> allocation, exactly at the point where the validated struct ended and the bare 4-byte decode ran off the end of it. The resulting <code>num_lockers</code> value, <code>0xccccaaaa</code>, is uninitialized redzone content rather than anything the OSD legitimately sent, and it is fed straight into the allocation-size calculation for the lockers array. Bug 2 shares the identical precondition (a struct that decodes with <code>p</code> left exactly at <code>end</code>), just one byte instead of four, and was confirmed by source analysis and a separate PoC path rather than a second full KASAN capture in this log.
+    </p>
+</section>
+
+<section class="section">
+    <h2>6. Threat Modeling & Impact Assessment</h2>
+    <ul>
+        <li>
+            <strong>Primary Primitive:</strong> Slab out-of-bounds read of up to 4 bytes (bug 1) feeding an allocation-size decision, plus a 1-byte OOB read (bug 2) that leaks adjacent slab content into a value callers trust as a lock type discriminator.
+        </li>
+        <li>
+            <strong>Secondary Primitive:</strong> Attacker-influenced allocation sizing. Since <code>num_lockers</code> comes from unvalidated memory, a crafted or unlucky heap layout can push the allocation request into pathological ranges, affecting downstream allocator behavior.
+        </li>
+        <li>
+            <strong>Attack Vector:</strong> A malicious or compromised OSD in a multi-tenant Ceph deployment sends a malformed reply to the <code>lock.get_info</code> class method. Any kernel client issuing that call, including RBD clients performing exclusive lock acquisition, is reachable. No privilege beyond an established OSD session is required.
+        </li>
+        <li>
+            <strong>CVSS:</strong> 9.8 Critical (<code>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</code>) per the kernel.org CNA assessment.
+        </li>
+    </ul>
+</section>
+
+<section class="section">
+    <h2>7. Remediation</h2>
+    <p>
+        The fix replaces both bare decode operations with their bounds-checked <code>_safe</code> variants and adds a dedicated error path for the pre-allocation failure case.
+    </p>
+<pre>
+diff --git a/net/ceph/cls_lock_client.c b/net/ceph/cls_lock_client.c
+index c6956f1df..4e6a6d3e4 100644
+--- a/net/ceph/cls_lock_client.c
++++ b/net/ceph/cls_lock_client.c
+@@ -299,7 +299,7 @@ static int decode_lockers(void **p, void *end, u8 *type, char **tag,
+        if (ret)
+                return ret;
+
+-       *num_lockers = ceph_decode_32(p);
++       ceph_decode_32_safe(p, end, *num_lockers, err_inval);
+        *lockers = kzalloc_objs(**lockers, *num_lockers, GFP_NOIO);
+        if (!*lockers)
+                return -ENOMEM;
+@@ -310,7 +310,8 @@ static int decode_lockers(void **p, void *end, u8 *type, char **tag,
+                        goto err_free_lockers;
+        }
+
+-       *type = ceph_decode_8(p);
++       ret = -EINVAL;
++       ceph_decode_8_safe(p, end, *type, err_free_lockers);
+        s = ceph_extract_encoded_string(p, end, NULL, GFP_NOIO);
+        if (IS_ERR(s)) {
+                ret = PTR_ERR(s);
+@@ -320,6 +321,8 @@ static int decode_lockers(void **p, void *end, u8 *type, char **tag,
+        *tag = s;
+        return 0;
+
++err_inval:
++       return -EINVAL;
+ err_free_lockers:
+        ceph_free_lockers(*lockers, *num_lockers);
+        return ret;
+</pre>
+    <p>
+        <code>-EINVAL</code> is used for both failure paths because the received data is structurally malformed, not a resource exhaustion condition; using <code>-ENOMEM</code> instead would misrepresent the failure class to callers and to stable backporters triaging the error path.
+    </p>
+</section>
+
+<section class="section">
+    <h2>8. Affected Configurations</h2>
+    <ul>
+        <li><strong>Vulnerable Component:</strong> Linux kernel <code>libceph</code> client, <code>net/ceph/cls_lock_client.c</code>.</li>
+        <li><strong>Reachable Callers:</strong> Any kernel consumer invoking the <code>lock.get_info</code> Ceph class method, including RBD kernel clients performing exclusive lock acquisition.</li>
+        <li><strong>Configuration Requirements:</strong> Kernel built with Ceph client support, connected to a Ceph cluster where an untrusted or compromised OSD may respond.</li>
+    </ul>
+</section>
+
+<section class="section">
+
+<h2>Upstream Patch & Timeline</h2>
+
+<p>
+Reported upstream to the Ceph client maintainers via the Linux Kernel Mailing List. The patch went through three revisions, with v3 combining both bugs into a single patch per review feedback from Viacheslav Dubeyko and addressing a stale error-code issue flagged by smatch. Reviewed-by was given by Viacheslav Dubeyko (IBM). Assigned CVE-2026-68082, published to the NVD on 2026-08-08, CVSS 9.8 Critical per the kernel.org CNA.
+</p>
+
+<p>
+<strong>LKML Activity & Patch History:</strong>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+target="_blank"
+rel="noopener noreferrer">
+lore.kernel.org/all/?q=Pavitra+Jha
+</a>
+</p>
+
+</section>
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+
+
+</div>
+
+</body>
+</html>
