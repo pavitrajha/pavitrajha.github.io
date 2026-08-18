@@ -86,6 +86,9 @@
             CVE-2026-64532, CVE-2026-64533 - two heap OOB flaws in the NTFS3 log replay path
           </li>
           <li>
+            CVE-2026-68082 - two unsafe bare decodes causing slab OOB reads in libceph decode_lockers(), reachable via RBD exclusive lock acquisition
+          </li>
+          <li>
             Top 100 Bug Hunters, Google, 2022
           </li>
         </ul>
@@ -133,6 +136,13 @@
             NTFS3 file system driver: two OOB flaws in log_replay infrastructure
             <br />
             <a href="blog/ntfs3-log_replay-oob-writeup.html">          Read Writeup
+</a>
+          </div>
+           <div class="card feature-card">
+            <div class="feature-tag">CVE-2026-68082</div>
+            Two unsafe bare decodes: slab OOB read in the libceph decode_lockers() RBD lock path
+            <br />
+            <a href="blog/Ceph-oob1-writeup.html">          Read Writeup
 </a>
           </div>
           <div class="card feature-card">
