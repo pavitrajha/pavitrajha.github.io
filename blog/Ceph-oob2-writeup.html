@@ -359,30 +359,30 @@ index 2ff00070c..2cdac81a6 100644
         if (ret)
                 return ret;
 
-* ```
+*  
     *num_watchers = ceph_decode_32(p);
-  ```
+   
 
-- ```
+-  
     ceph_decode_32_safe(p, end, *num_watchers, bad);
     *watchers = kzalloc_objs(**watchers, *num_watchers, GFP_NOIO);
     if (!*watchers)
             return -ENOMEM;
-  ```
+   
 
 @@ -5044,6 +5044,8 @@ static int decode_watchers(void **p, void *end,
 }
 
-```
+ 
     return 0;
-```
+ 
 
 +bad:
 +
 
-* ```
+*  
     return -EINVAL;
-  ```
+   
 
 } </pre> <p> <code>ceph_decode_32_safe()</code> verifies that four bytes remain
 before performing the decode. A malformed reply leaving <code>p == end</code> is therefore rejected with <code>-EINVAL</code>. </p>
