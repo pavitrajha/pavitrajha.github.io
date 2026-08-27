@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Linux libceph decode_locker() Unsafe Decodes</title>
+<title>Linux libceph decode_locker() Unsafe Decodes (CVE-2026-80561)</title>
 <link rel="stylesheet" href="../style.css" />
 
 <style>
@@ -131,7 +131,7 @@ li {
 <div class="container">
 
 <header>
-<h1>Linux libceph: Three Unsafe Decodes in decode_locker()</h1>
+<h1>Linux libceph: Multiple Unsafe Decodes in decode_locker() (CVE-2026-80561)</h1>
 <p class="meta">
 Linux Kernel libceph Client | net/ceph/cls_lock_client.c | Slab Memory Safety | Vulnerability Write-up
 </p>
@@ -142,29 +142,39 @@ Linux Kernel libceph Client | net/ceph/cls_lock_client.c | Slab Memory Safety | 
 
 ```
 <p>
-    Multiple unsafe decoding operations existed in the Linux kernel's
-    <code>libceph</code> client within <code>decode_locker()</code> in
-    <code>net/ceph/cls_lock_client.c</code>. The function contained three
-    separate locations where the parser either consumed bytes or advanced
-    its cursor without first establishing that the requested range remained
-    inside the received OSD reply.
+    CVE-2026-80561 is a collection of unsafe decoding operations in the
+    Linux kernel's <code>libceph</code> client within
+    <code>decode_locker()</code> in
+    <code>net/ceph/cls_lock_client.c</code>.
 </p>
 
 <p>
-    The vulnerable operations consisted of an unchecked
-    <code>ceph_decode_copy()</code>, an unchecked pointer advance over a
-    <code>struct ceph_timespec</code>, and an unchecked
-    <code>ceph_decode_32()</code> followed by an uncapped pointer advance
-    using the decoded length.
+    Three separate operations consumed or skipped data without establishing
+    that the requested bytes remained within the received OSD reply:
 </p>
 
+<ul>
+    <li>
+        <code>ceph_decode_copy()</code> copied the fixed-size
+        <code>locker_id_t</code> name field without a preceding bounds
+        check.
+    </li>
+
+    <li>
+        A raw pointer increment skipped
+        <code>sizeof(struct ceph_timespec)</code> bytes without validating
+        the remaining decode range.
+    </li>
+
+    <li>
+        A bare <code>ceph_decode_32()</code> decoded a variable length,
+        followed by an uncapped <code>*p += len</code>.
+    </li>
+</ul>
+
 <p>
-    The underlying issue is the same parser invariant violation seen in
-    other libceph decode paths: successful completion of
-    <code>ceph_start_decoding()</code> does not guarantee that subsequent
-    fields remain available. In particular, <code>struct_len=0</code> can
-    be accepted, leaving the decode cursor positioned at
-    <code>end</code>.
+    Together, these operations allowed malformed OSD replies to violate
+    the parser's fundamental decode-window invariant.
 </p>
 ```
 
@@ -173,24 +183,14 @@ Linux Kernel libceph Client | net/ceph/cls_lock_client.c | Slab Memory Safety | 
 <section class="section">
     <h2>2. Vulnerability Execution Path</h2>
 
-```
-<p>
-    The vulnerable function parses locker information returned by the
-    Ceph <code>lock.get_info</code> class method:
-</p>
-```
-
 <pre>
 Kernel Ceph client
     |
     v
-Ceph OSD receives lock.get_info request
+lock.get_info class method
     |
     v
 OSD returns encoded locker information
-    |
-    v
-net/ceph/cls_lock_client.c
     |
     v
 decode_lockers()
@@ -200,32 +200,24 @@ decode_locker()
     |
     +-- ceph_start_decoding()
     |       |
-    |       +-- struct_len=0 may be accepted
-    |       |
-    |       +-- p can equal end
+    |       +-- struct_len=0 may leave p == end
     |
     +-- Unsafe decode #1
     |       ceph_decode_copy()
     |
-    +-- Unsafe decode #2
+    +-- Unsafe skip #2
     |       *p += sizeof(struct ceph_timespec)
     |
-    +-- Unsafe decode #3
+    +-- Unsafe decode/skip #3
             len = ceph_decode_32(p)
             *p += len
 </pre>
 
 ```
 <p>
-    Under the stated threat model, a malicious or compromised OSD capable
-    of responding to the relevant Ceph client request can supply malformed
-    encoded data to this parser.
-</p>
-
-<p>
-    The path can be reached when a kernel client issues the
-    <code>lock.get_info</code> class method, including scenarios such as
-    RBD exclusive lock acquisition.
+    The affected parser is reachable when kernel Ceph clients process
+    locker information returned by the <code>lock.get_info</code> class
+    method.
 </p>
 ```
 
@@ -236,8 +228,7 @@ decode_locker()
 
 ```
 <p>
-    The first issue occurs immediately after decoding the initial
-    <code>locker_id_t</code> structure.
+    The first unsafe operation copied the locker name using:
 </p>
 ```
 
@@ -248,27 +239,16 @@ ceph_decode_copy(p, &locker->id.name,
 
 ```
 <p>
-    This operation performs a raw fixed-size copy without independently
-    checking that the requested bytes remain between <code>*p</code> and
-    <code>end</code>.
+    No independent verification established that the requested bytes
+    remained available.
 </p>
 
 <p>
-    If <code>ceph_start_decoding()</code> accepts a malformed encoded
-    structure with <code>struct_len=0</code>, the decode cursor can be
-    left at:
-</p>
-```
-
-<pre>
-*p == end
-</pre>
-
-```
-<p>
-    The subsequent <code>ceph_decode_copy()</code> then attempts to read
-    <code>sizeof(ceph_entity_name)</code>, which is nine bytes in the
-    affected layout, beyond the validated receive-buffer boundary.
+    When <code>ceph_start_decoding()</code> accepts
+    <code>struct_len=0</code>, the cursor can be positioned exactly at
+    <code>end</code>. The subsequent copy then attempts to read
+    <code>sizeof(ceph_entity_name)</code>, or nine bytes, beyond the
+    validated boundary.
 </p>
 ```
 
@@ -279,7 +259,7 @@ struct_len = 0
 ceph_start_decoding() succeeds
       |
       v
-*p == end
+p == end
       |
       v
 ceph_decode_copy(..., 9 bytes)
@@ -291,20 +271,14 @@ out-of-bounds read
 
 ```
 <p>
-    The correct primitive already existed in the decoder API:
+    The corrected operation is:
 </p>
 ```
 
 <pre>
-ceph_decode_copy_safe(p, end, ...);
+ceph_decode_copy_safe(p, end, &locker->id.name,
+                      sizeof(locker->id.name), out_bad);
 </pre>
-
-```
-<p>
-    The safe variant verifies that the entire requested range is available
-    before performing the copy.
-</p>
-```
 
 </section>
 
@@ -313,8 +287,7 @@ ceph_decode_copy_safe(p, end, ...);
 
 ```
 <p>
-    The second issue was not a direct load operation but an unchecked
-    pointer advance:
+    The second vulnerability was an unchecked pointer advance:
 </p>
 ```
 
@@ -324,55 +297,29 @@ ceph_decode_copy_safe(p, end, ...);
 
 ```
 <p>
-    The parser advances over the encoded expiration field without checking
-    whether the entire <code>struct ceph_timespec</code> actually remains
-    inside the receive buffer.
+    The parser advanced over the expiration field without proving that the
+    complete field remained within the receive buffer.
 </p>
 
 <p>
-    This is particularly dangerous in a stateful decoder because the
-    validity of later operations depends on the integrity of the parser
-    cursor. Once <code>*p</code> is moved beyond <code>end</code>, later
-    checks no longer necessarily describe the original decode window.
-</p>
-```
-
-<pre>
-Valid decode window:
-
-        [ buffer start ..................... end ]
-
-Unchecked advance:
-
-        p ------------------------------------^
-                                                 \
-                                                  +-- p moved beyond end
-</pre>
-
-```
-<p>
-    The problem is therefore not merely skipping a missing field. An
-    unchecked cursor advance can corrupt the parser's boundary invariant
-    and invalidate assumptions made by subsequent decoding operations.
+    This is significant because the decode cursor itself is security-
+    sensitive state. Moving it beyond <code>end</code> breaks the
+    assumptions on which subsequent decoding operations rely.
 </p>
 
 <p>
-    The fix replaces the raw pointer arithmetic with the bounds-aware
-    helper:
+    The raw pointer arithmetic was replaced with:
 </p>
 ```
 
 <pre>
-ceph_decode_skip_n(p, end,
-                   sizeof(struct ceph_timespec),
-                   out_bad);
+/* skip expiration */
+ceph_decode_skip_n(p, end, sizeof(struct ceph_timespec), out_bad);
 </pre>
 
 ```
 <p>
-    This preserves the intended protocol operation while ensuring that the
-    skip occurs only when the complete timespec field remains within the
-    validated buffer.
+    The helper verifies the requested range before advancing the cursor.
 </p>
 ```
 
@@ -383,7 +330,8 @@ ceph_decode_skip_n(p, end,
 
 ```
 <p>
-    The third issue is a compound parsing sequence:
+    The third issue consisted of an unchecked four-byte length decode
+    followed by an unchecked skip:
 </p>
 ```
 
@@ -394,46 +342,18 @@ len = ceph_decode_32(p);
 
 ```
 <p>
-    Neither operation independently enforced the decode boundary.
+    If the cursor is already at <code>end</code>, the bare
+    <code>ceph_decode_32()</code> performs a four-byte out-of-bounds read.
 </p>
 
 <p>
-    First, <code>ceph_decode_32(p)</code> reads four bytes without checking
-    that those bytes remain available. If <code>p == end</code>, this is
-    immediately a four-byte out-of-bounds read.
+    The decoded value is then used directly to advance the parser cursor.
+    A maliciously large value such as <code>0xffffffff</code> can move
+    the cursor far outside the intended decode window.
 </p>
 
 <p>
-    Second, the decoded value is used directly as a pointer increment:
-</p>
-```
-
-<pre>
-*p += len;
-</pre>
-
-```
-<p>
-    There is no verification that <code>len</code> fits within the
-    remaining decode window. A malformed reply can therefore provide an
-    extremely large length, such as:
-</p>
-```
-
-<pre>
-len = 0xffffffff
-</pre>
-
-```
-<p>
-    The parser cursor can then be advanced far beyond the original message
-    boundary. This breaks the fundamental invariant that all parser
-    movement must remain within the range represented by
-    <code>[p, end]</code>.
-</p>
-
-<p>
-    The fix validates both operations independently:
+    Both stages are now independently bounded:
 </p>
 ```
 
@@ -444,121 +364,23 @@ ceph_decode_32_safe(p, end, len, out_bad);
 ceph_decode_skip_n(p, end, len, out_bad);
 </pre>
 
-```
-<p>
-    The first helper establishes that the four-byte length field exists.
-    The second establishes that the decoded number of bytes actually
-    remains available before advancing the cursor.
-</p>
-```
-
 </section>
 
 <section class="section">
-    <h2>6. Source Code Analysis</h2>
+    <h2>6. KASAN Verification</h2>
 
 ```
 <p>
-    The vulnerable code contained the following three unsafe patterns:
+    The bare four-byte length decode was verified with a
+    KASAN-instrumented Linux <code>7.0.0-rc7</code> kernel under QEMU/x86_64
+    with KASLR disabled.
 </p>
 ```
 
 <pre>
-ceph_decode_copy(p, &locker->id.name,
-                 sizeof(locker->id.name));
-
-...
-
-*p += sizeof(struct ceph_timespec); /* skip expiration */
-
-...
-
-len = ceph_decode_32(p);
-*p += len; /* skip description */
-</pre>
-
-```
-<p>
-    All three operations consume or skip data without establishing that the
-    requested bytes remain within the decode boundary.
-</p>
-
-<p>
-    The corrected implementation uses the existing safe decoding
-    primitives:
-</p>
-```
-
-<pre>
-ceph_decode_copy_safe(p, end, &locker->id.name,
-                      sizeof(locker->id.name), out_bad);
-
-...
-
-/* skip expiration */
-ceph_decode_skip_n(p, end, sizeof(struct ceph_timespec), out_bad);
-
-...
-
-ceph_decode_32_safe(p, end, len, out_bad);
-/* skip description */
-ceph_decode_skip_n(p, end, len, out_bad);
-</pre>
-
-```
-<h3>The restored parser invariant</h3>
-
-<p>
-    After the fix, every operation that consumes a fixed or variable number
-    of bytes must first prove that those bytes exist:
-</p>
-```
-
-<pre>
-Read N bytes:
-    verify N bytes remain
-    |
-    v
-perform read
-
-Skip N bytes:
-    verify N bytes remain
-    |
-    v
-advance cursor
-</pre>
-
-```
-<p>
-    This prevents both direct out-of-bounds accesses and cursor movement
-    beyond the valid decode window.
-</p>
-```
-
-</section>
-
-<section class="section">
-    <h2>7. KASAN Verification</h2>
-
-```
-<p>
-    The unchecked four-byte length decode was verified with a
-    KASAN-instrumented kernel running <code>7.0.0-rc7</code> under
-    QEMU/x86_64 with KASLR disabled.
-</p>
-```
-
-<pre>
-[   26.183969] ceph_oob4_poc: buf=ffff888009e31000
-end=ffff888009e31fa0
-
-[   26.186087] ceph_oob4_poc: struct_v=1
-struct_len=0 p==end: 1
-
-[   26.186738] ceph_oob4_poc: triggering bare ceph_decode_32
-past slab boundary...
-
-[   26.187679] ==================================================================
+[   26.183969] ceph_oob4_poc: buf=ffff888009e31000 end=ffff888009e31fa0
+[   26.186087] ceph_oob4_poc: struct_v=1 struct_len=0 p==end: 1
+[   26.186738] ceph_oob4_poc: triggering bare ceph_decode_32 past slab boundary...
 
 [   26.188236] BUG: KASAN: slab-out-of-bounds in
 ceph_oob4_init+0x22b/0xff0 [ceph_oob4_poc]
@@ -566,37 +388,13 @@ ceph_oob4_init+0x22b/0xff0 [ceph_oob4_poc]
 [   26.188236] Read of size 4 at addr ffff888009e31fa0
 by task insmod/59
 
-[   26.188236] CPU: 0 UID: 0 PID: 59 Comm: insmod
-Tainted: G           O
-7.0.0-rc7-g9c2abf69da83-dirty #15 PREEMPT(lazy)
-
-[   26.188236] Tainted: [O]=OOT_MODULE
-
-[   26.188236] Hardware name: QEMU Standard PC
-(i440FX + PIIX, 1996)
-
-Call Trace:
-  dump_stack_lvl+0x4d/0x70
-  print_report+0x170/0x4f3
-  kasan_report+0xda/0x110
-  ceph_oob4_init+0x22b/0xff0 [ceph_oob4_poc]
-  do_one_initcall+0x9a/0x3a0
-  do_init_module+0x27c/0x790
-  load_module+0x4a9a/0x6350
-  init_module_from_file+0x15c/0x180
-  idempotent_init_module+0x21f/0x750
-  __x64_sys_finit_module+0xba/0x120
-  do_syscall_64+0xe2/0x570
-  entry_SYSCALL_64_after_hwframe+0x77/0x7f
-
 [   26.188236] The buggy address belongs to the object at
 ffff888009e31000
 
-[   26.188236] which belongs to the cache kmalloc-4k
-of size 4096
+[   26.188236] which belongs to the cache kmalloc-4k of size 4096
 
-[   26.188236] The buggy address is located 0 bytes
-to the right of allocated 4000-byte region
+[   26.188236] The buggy address is located 0 bytes to the right of
+allocated 4000-byte region
 
 [ffff888009e31000, ffff888009e31fa0)
 
@@ -604,160 +402,86 @@ to the right of allocated 4000-byte region
 00 00 00 00 fc fc fc fc fc fc fc fc fc fc fc fc
                                     ^
 
-[   26.188236] ffff888009e32000:
-fc fc fc fc fc fc fc fc fc fc fc fc fc fc fc fc
-
-[   26.188236] ==================================================================
-
 [   26.255513] ceph_oob4_poc: len=0xcccccccc
 (OOB garbage from KASAN redzone)
 </pre>
 
 ```
-<h3>Anatomy of the confirmed read</h3>
+<h3>Confirmed Primitive</h3>
 
 <p>
-    The valid allocation occupied the range:
+    The KASAN trace directly confirms the four-byte out-of-bounds read
+    through <code>ceph_decode_32()</code>. The returned value,
+    <code>0xCCCCCCCC</code>, originated from the KASAN redzone immediately
+    beyond the 4000-byte allocation.
 </p>
-```
 
-<pre>
-[ffff888009e31000, ffff888009e31fa0)
-</pre>
-
-```
 <p>
-    The decode cursor was positioned exactly at:
-</p>
-```
-
-<pre>
-p = end = ffff888009e31fa0
-</pre>
-
-```
-<p>
-    The bare <code>ceph_decode_32()</code> then attempted to read four
-    bytes starting at the first address outside the allocation. KASAN
-    reported the access as a slab out-of-bounds read immediately to the
-    right of the 4000-byte object.
+    The remaining unsafe operations were identified through source analysis
+    of their missing bounds checks and were corrected in the same upstream
+    patch.
 </p>
 ```
 
 </section>
 
 <section class="section">
-    <h2>8. Why 0xCCCCCCCC Matters</h2>
-
-```
-<p>
-    The value returned by the out-of-bounds length decode was:
-</p>
-```
-
-<pre>
-len = 0xcccccccc
-</pre>
-
-```
-<p>
-    In the KASAN test environment, this value corresponds to poisoned
-    redzone memory rather than protocol data supplied within the allocated
-    receive buffer.
-</p>
-
-<p>
-    Its appearance therefore confirms that the bare decoder consumed memory
-    beyond the intended object boundary.
-</p>
-
-<p>
-    In the vulnerable source sequence, the decoded value would subsequently
-    be used as a pointer increment:
-</p>
-```
-
-<pre>
-*p += len;
-</pre>
-
-```
-<p>
-    This makes the missing bounds validation particularly important. The
-    parser does not merely read the invalid value; the value participates
-    directly in subsequent cursor movement.
-</p>
-```
-
-</section>
-
-<section class="section">
-    <h2>9. Threat Model & Impact Assessment</h2>
+    <h2>7. Threat Model & Impact Assessment</h2>
 
 ```
 <ul>
     <li>
-        <strong>Primary Memory-Safety Issues:</strong> Unsafe fixed-size
-        reads, unsafe pointer advancement, and a variable-length skip
-        without a boundary check.
+        <strong>CVE:</strong> CVE-2026-80561.
     </li>
 
     <li>
-        <strong>Confirmed KASAN Primitive:</strong> A four-byte
-        slab out-of-bounds read through the bare
+        <strong>Primary Issues:</strong> Unsafe fixed-size reads,
+        unchecked cursor advancement, and variable-length skips without
+        boundary validation.
+    </li>
+
+    <li>
+        <strong>Confirmed KASAN Primitive:</strong> Four-byte slab
+        out-of-bounds read through the bare
         <code>ceph_decode_32()</code>.
     </li>
 
     <li>
-        <strong>Additional Source-Level Issues:</strong> The nine-byte
-        <code>ceph_decode_copy()</code> and both unchecked pointer
-        advances violate the same decode-boundary invariant.
-    </li>
-
-    <li>
         <strong>Attack Vector:</strong> A malicious or compromised OSD
-        supplies a malformed response for the <code>lock.get_info</code>
-        class method.
+        sends malformed locker information.
     </li>
 
     <li>
         <strong>Reachable Callers:</strong> Kernel Ceph clients issuing
-        <code>lock.get_info</code>, including RBD clients using exclusive
-        lock functionality.
+        <code>lock.get_info</code>, including RBD clients performing
+        exclusive lock operations.
     </li>
 
     <li>
-        <strong>Privilege Requirement:</strong> Under the stated attacker
-        model, no additional local privileges are required once the
-        attacker can provide the relevant OSD response.
+        <strong>Privilege Model:</strong> Under the stated attacker model,
+        no further privilege is required beyond the ability to establish
+        or control the relevant OSD session.
     </li>
 </ul>
 
 <p>
-    The KASAN reproduction directly establishes the four-byte
-    out-of-bounds read at the length field. The remaining unsafe operations
-    are established by source-level analysis of their missing bounds checks
-    and are corrected in the same upstream patch.
-</p>
-
-<p>
-    The exact consequences beyond the demonstrated memory-safety primitives
-    can depend on parser state, allocator state, subsequent callers, and
-    the surrounding kernel environment. This write-up therefore does not
-    claim exploitation capabilities beyond the behavior established by the
-    supplied reproduction and source analysis.
+    The demonstrated KASAN report establishes the four-byte out-of-bounds
+    read. The exact consequences of the additional cursor manipulation
+    depend on parser state and surrounding execution context, so no
+    exploitation capability beyond the demonstrated memory-safety
+    conditions is claimed here.
 </p>
 ```
 
 </section>
 
 <section class="section">
-    <h2>10. Remediation</h2>
+    <h2>8. Remediation</h2>
 
 ```
 <p>
-    The upstream patch replaces all unsafe operations with existing
-    bounds-aware decoding primitives.
+    The upstream fix replaces all unsafe reads and pointer advances with
+    bounds-aware decoder helpers.
 </p>
 ```
 
@@ -775,12 +499,7 @@ index 4e6a6d3e4..79a449897 100644
 +       ceph_decode_copy_safe(p, end, &locker->id.name,
 +                             sizeof(locker->id.name), out_bad);
 
-        s = ceph_extract_encoded_string(p, end, NULL, GFP_NOIO);
-        if (IS_ERR(s))
-                return PTR_ERR(s);
 @@ -270,19 +271,23 @@ static int decode_locker(void **p, void *end,
-        if (ret)
-                return ret;
 
 -       *p += sizeof(struct ceph_timespec); /* skip expiration */
 +       /* skip expiration */
@@ -796,9 +515,6 @@ index 4e6a6d3e4..79a449897 100644
 +       /* skip description */
 +       ceph_decode_skip_n(p, end, len, out_bad);
 
-        dout("%s %s%llu cookie %s addr %s\n", __func__,
-             ENTITY_NAME(locker->id.name), locker->id.cookie,
-             ceph_pr_addr(&locker->info.addr));
         return 0;
 +out_bad:
 +       return -EINVAL;
@@ -807,79 +523,23 @@ index 4e6a6d3e4..79a449897 100644
 
 ```
 <p>
-    Each operation now independently establishes that the required range
-    remains available before either reading or advancing the parser cursor.
+    The new <code>out_bad</code> path returns <code>-EINVAL</code>,
+    correctly classifying the condition as structurally malformed data.
 </p>
 ```
 
 </section>
 
 <section class="section">
-    <h2>11. Error Handling</h2>
-
-```
-<p>
-    The patch introduces a dedicated <code>out_bad</code> error label:
-</p>
-```
-
-<pre>
-out_bad:
-        return -EINVAL;
-</pre>
-
-```
-<p>
-    <code>-EINVAL</code> is appropriate because a bounds violation during
-    protocol decoding represents structurally malformed input relative to
-    the decode contract.
-</p>
-
-<p>
-    This failure is distinct from resource exhaustion. Returning
-    <code>-ENOMEM</code>, for example, would incorrectly describe malformed
-    encoded data as an allocator failure.
-</p>
-```
-
-</section>
-
-<section class="section">
-    <h2>12. Affected Configurations</h2>
+    <h2>9. Affected Configurations</h2>
 
 ```
 <ul>
-    <li>
-        <strong>Vulnerable Component:</strong> Linux kernel
-        <code>libceph</code> client.
-    </li>
-
-    <li>
-        <strong>Source File:</strong>
-        <code>net/ceph/cls_lock_client.c</code>.
-    </li>
-
-    <li>
-        <strong>Vulnerable Function:</strong>
-        <code>decode_locker()</code>.
-    </li>
-
-    <li>
-        <strong>Protocol Path:</strong> Locker information returned through
-        the <code>lock.get_info</code> Ceph class method.
-    </li>
-
-    <li>
-        <strong>Configuration Requirement:</strong> A kernel Ceph client
-        communicating with an OSD capable of supplying malformed response
-        data.
-    </li>
-
-    <li>
-        <strong>Threat Model:</strong> A malicious or compromised OSD,
-        including multi-tenant environments where every storage peer cannot
-        be assumed trustworthy.
-    </li>
+    <li><strong>Vulnerable Component:</strong> Linux kernel <code>libceph</code>.</li>
+    <li><strong>Source File:</strong> <code>net/ceph/cls_lock_client.c</code>.</li>
+    <li><strong>Vulnerable Function:</strong> <code>decode_locker()</code>.</li>
+    <li><strong>Protocol Path:</strong> <code>lock.get_info</code>.</li>
+    <li><strong>Threat Model:</strong> A kernel client receiving malformed responses from a malicious or compromised OSD.</li>
 </ul>
 ```
 
@@ -887,45 +547,50 @@ out_bad:
 
 <section class="section">
 
-<h2>13. Upstream Patch & Timeline</h2>
+<h2>10. Upstream Patch & Timeline</h2>
 
 <p>
-The patch fixes all three unsafe decode operations in
-<code>decode_locker()</code> and identifies commit
-<code>d4ed4a530562</code> ("libceph: support for lock.lock_info") as the
-introducing commit.
+CVE-2026-80561 was assigned to the multiple unsafe decode conditions in
+<code>decode_locker()</code>.
 </p>
 
 <p>
-The patch includes <code>Cc: stable@vger.kernel.org</code> for stable-tree
-consideration.
-</p>
-
-<p>
-Version 2 incorporated review feedback from Viacheslav Dubeyko by moving
-the explanatory comments above the <code>ceph_decode_skip_n()</code>
-calls and renaming the error label from <code>bad</code> to
-<code>out_bad</code>.
-</p>
-
-<p>
-Version 3 split the <code>ceph_decode_copy_safe()</code> invocation across
-lines to comply with the kernel's 80-column formatting convention, following
-further review feedback.
-</p>
-
-<p>
-The final patch is signed:
+The upstream fix commit is:
 </p>
 
 <pre>
-Signed-off-by: Pavitra Jha &lt;jhapavitra98@gmail.com&gt;
+437b6551cfcc235eea1d735a874f9d421f555e17
 </pre>
 
 <p>
-The remediation is intentionally narrow: it does not change the Ceph wire
-format or locker semantics. It restores the missing requirement that every
-read and every cursor advance remain bounded by <code>end</code>.
+The vulnerable functionality was introduced by:
+</p>
+
+<pre>
+d4ed4a530562 ("libceph: support for lock.lock_info")
+</pre>
+
+<p>
+The patch was marked for stable-tree consideration through
+<code>Cc: stable@vger.kernel.org</code>.
+</p>
+
+<p>
+Version 2 incorporated Viacheslav Dubeyko's review feedback by moving
+comments above the <code>ceph_decode_skip_n()</code> calls and renaming
+the error label from <code>bad</code> to <code>out_bad</code>.
+</p>
+
+<p>
+Version 3 split the <code>ceph_decode_copy_safe()</code> call to comply
+with the kernel's 80-column formatting convention following additional
+review feedback.
+</p>
+
+<p>
+The final patch restores a single security invariant throughout the parser:
+every read and every cursor advance must remain bounded by the received
+message's <code>end</code> pointer.
 </p>
 
 <p>
@@ -941,57 +606,46 @@ lore.kernel.org/all/?q=Pavitra+Jha
 
 <section class="section">
 
-<h2>14. Key Takeaway</h2>
+<h2>11. Key Takeaway</h2>
 
 <p>
-The three issues demonstrate that safe protocol parsing requires more than
-checking individual data reads. The parser cursor itself is security-sensitive
-state.
+CVE-2026-80561 demonstrates that safe protocol parsing requires validation of
+both memory accesses and parser-state transitions.
 </p>
 
 <pre>
-Unsafe parser operations:
+Read N bytes:
+    verify N bytes remain
+    |
+    v
+perform read
 
-    Read N bytes without checking N remains
-              |
-              v
-         OOB read
+Skip N bytes:
+    verify N bytes remain
+    |
+    v
+advance cursor
 
-    Advance by N without checking N remains
-              |
-              v
-         Cursor escapes decode window
-
-    Decode attacker-controlled length
-    then advance by that length unchecked
-              |
-              v
-         Boundary invariant is lost
+Decode attacker-controlled length:
+    validate length field
+    |
+    v
+validate requested skip
+    |
+    v
+advance cursor
 </pre>
 
 <p>
-A robust decoder must enforce the same rule for both operations:
-</p>
-
-<pre>
-Before reading N bytes:
-    verify N bytes remain
-
-Before skipping N bytes:
-    verify N bytes remain
-</pre>
-
-<p>
-The upstream fix applies this invariant consistently through
+The fix applies these rules consistently using
 <code>ceph_decode_copy_safe()</code>,
 <code>ceph_decode_32_safe()</code>, and
 <code>ceph_decode_skip_n()</code>.
 </p>
 
 <p>
-That prevents malformed OSD replies from moving the decode cursor outside its
-validated window or causing subsequent operations to consume memory beyond
-the received buffer.
+This prevents malformed OSD replies from causing the parser to read beyond
+the validated message boundary or move its cursor outside the decode window.
 </p>
 
 </section>
