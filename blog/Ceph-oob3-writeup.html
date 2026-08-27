@@ -411,61 +411,61 @@ index 4e6a6d3e4..79a449897 100644
         if (ret)
                 return ret;
 
-* ```
+*  
     ceph_decode_copy(p, &locker->id.name,
-  ```
-* ```
+   
+*  
                      sizeof(locker->id.name));
-  ```
+   
 
-- ```
+-  
     ceph_decode_copy_safe(p, end, &locker->id.name,
-  ```
-- ```
+   
+-  
                           sizeof(locker->id.name), out_bad);
-  ```
+   
 
 @@ -270,19 +271,23 @@ static int decode_locker(void **p, void *end,
 
-* ```
+*  
     *p += sizeof(struct ceph_timespec); /* skip expiration */
-  ```
+   
 
-- ```
+-  
     /* skip expiration */
-  ```
-- ```
+   
+-  
     ceph_decode_skip_n(p, end, sizeof(struct ceph_timespec), out_bad);
 
     ret = ceph_decode_entity_addr(p, end, &locker->info.addr);
     if (ret)
             return ret;
-  ```
+   
 
-* ```
+*  
     len = ceph_decode_32(p);
-  ```
-* ```
+   
+*  
     *p += len; /* skip description */
-  ```
+   
 
-- ```
+-  
     ceph_decode_32_safe(p, end, len, out_bad);
-  ```
-- ```
+   
+-  
     /* skip description */
-  ```
-- ```
+   
+-  
     ceph_decode_skip_n(p, end, len, out_bad);
 
     return 0;
-  ```
+   
 
 +out_bad:
 
-* ```
+*  
     return -EINVAL;
-  ```
+   
 
     </pre>
     <p>
