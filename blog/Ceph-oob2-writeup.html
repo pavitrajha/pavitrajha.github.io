@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Linux libceph decode_watchers() Out-of-Bounds Read</title>
+<title>Linux libceph decode_watchers() Out-of-Bounds Read (CVE-2026-80557)</title>
 <link rel="stylesheet" href="../style.css" />
 
 <style>
@@ -131,7 +131,7 @@ li {
 <div class="container">
 
 <header>
-<h1>Linux libceph: Unsafe Bare Decode in decode_watchers()</h1>
+<h1>Linux libceph: OOB Read in decode_watchers() (CVE-2026-80557)</h1>
 <p class="meta">
 Linux Kernel libceph Client | net/ceph/osd_client.c | Slab Memory Safety | Vulnerability Write-up
 </p>
@@ -139,44 +139,69 @@ Linux Kernel libceph Client | net/ceph/osd_client.c | Slab Memory Safety | Vulne
 
 <section class="section">
     <h2>1. Summary</h2>
-    <p>
-        An out-of-bounds read vulnerability existed in the Linux kernel's <code>libceph</code> client within <code>decode_watchers()</code> in <code>net/ceph/osd_client.c</code>. The function used a bare <code>ceph_decode_32()</code> operation immediately after <code>ceph_start_decoding()</code>, without verifying that four bytes remained in the receive buffer.
-    </p>
-    <p>
-        The root cause is that <code>ceph_start_decoding()</code> validates that <code>struct_len</code> bytes remain after the encoding header, but accepts <code>struct_len=0</code> as valid. Internally, <code>ceph_decode_need(p, end, 0, bad)</code> succeeds for a zero-byte requirement. As a result, a malformed reply can successfully complete the initial decoding step with <code>p == end</code>, leaving zero bytes available for the next field.
-    </p>
-    <p>
-        The immediately following bare <code>ceph_decode_32(p)</code> then reads four bytes past the validated boundary. The value obtained from out-of-bounds memory is assigned directly to <code>*num_watchers</code> and passed to <code>kzalloc_objs()</code> as the watcher allocation count.
-    </p>
+
+```
+<p>
+    CVE-2026-80557 is an out-of-bounds read vulnerability in the Linux
+    kernel's <code>libceph</code> client within <code>decode_watchers()</code>
+    in <code>net/ceph/osd_client.c</code>.
+</p>
+
+<p>
+    The function used a bare <code>ceph_decode_32()</code> operation
+    immediately after <code>ceph_start_decoding()</code>, without verifying
+    that four bytes remained in the received OSD reply buffer.
+</p>
+
+<p>
+    The root cause is that <code>ceph_start_decoding()</code> accepts
+    <code>struct_len=0</code> as valid. The internal
+    <code>ceph_decode_need(p, end, 0, bad)</code> check succeeds because
+    zero bytes are required. This can leave the decoding cursor positioned
+    exactly at <code>end</code>.
+</p>
+
+<p>
+    The immediately following <code>ceph_decode_32(p)</code> then reads
+    four bytes past the validated buffer boundary. The resulting value is
+    assigned to <code>*num_watchers</code> and passed into
+    <code>kzalloc_objs()</code> as the watcher allocation count.
+</p>
+```
+
 </section>
 
 <section class="section">
     <h2>2. Vulnerability Execution Path</h2>
-    <p>
-        The vulnerable parser handles watcher-list replies received from a Ceph OSD:
-    </p>
+
+```
+<p>
+    The vulnerable parser processes replies associated with
+    <code>CEPH_OSD_OP_LIST_WATCHERS</code>:
+</p>
+```
 
 <pre>
 net/ceph/osd_client.c
   |
   v
-Kernel Ceph client processes a reply for CEPH_OSD_OP_LIST_WATCHERS
+Kernel Ceph client processes OSD reply
   |
   v
 decode_watchers()
   |
   +-- ceph_start_decoding()
   |     |
-  |     +-- struct_len=0 is accepted
+  |     +-- struct_len=0 accepted
   |     |
-  |     +-- returns successfully with p == end
+  |     +-- p == end
   |
   v
 *num_watchers = ceph_decode_32(p)
   |
   +-- No bounds check
   |
-  +-- Reads 4 bytes past end when p == end
+  +-- 4-byte read past end
   |
   v
 kzalloc_objs(**watchers, *num_watchers, GFP_NOIO)
@@ -184,10 +209,11 @@ kzalloc_objs(**watchers, *num_watchers, GFP_NOIO)
 
 ```
 <p>
-    The vulnerable condition occurs when a malicious or compromised OSD sends an <code>obj_list_watch_response_t</code> reply whose encoded structure has <code>struct_len=0</code>. The header parser accepts the empty structure, but the parser then immediately expects to read the four-byte watcher count.
-</p>
-<p>
-    At that point, the decoding cursor is already positioned exactly at the end of the validated buffer. The bare decode crosses the boundary before any subsequent validation can occur.
+    A malicious or compromised OSD can provide an
+    <code>obj_list_watch_response_t</code> reply with
+    <code>struct_len=0</code>. The structure header is accepted, but the
+    parser immediately attempts to decode a four-byte watcher count from a
+    position where no bytes remain.
 </p>
 ```
 
@@ -198,7 +224,7 @@ kzalloc_objs(**watchers, *num_watchers, GFP_NOIO)
 
 ```
 <p>
-    The vulnerable sequence is straightforward:
+    The vulnerable decoding sequence is:
 </p>
 ```
 
@@ -211,42 +237,32 @@ ceph_start_decoding(p, end, 1, "obj_list_watch_response_t",
 
 ```
 <p>
-    <code>ceph_start_decoding()</code> establishes that the encoded structure header itself is valid and that the declared structure length fits within the remaining buffer. However, a declared length of zero satisfies that validation.
+    Successful validation of the structure header does not guarantee that
+    subsequent fields remain available.
 </p>
 ```
 
 <pre>
 struct_len = 0
-
-ceph_decode_need(p, end, 0, bad)
-    |
-    +-- zero bytes are required
-    |
-    +-- validation succeeds
-    |
-    v
-ceph_start_decoding() returns success
-
+      |
+      v
+ceph_start_decoding() succeeds
+      |
+      v
 p == end
+      |
+      v
+ceph_decode_32(p)
+      |
+      X
+      |
+4-byte out-of-bounds read
 </pre>
 
 ```
 <p>
-    The parser has therefore successfully validated an empty structure, but <code>decode_watchers()</code> still proceeds to decode a mandatory four-byte watcher count.
-</p>
-```
-
-<pre>
-*num_watchers = ceph_decode_32(p);
-</pre>
-
-```
-<p>
-    Because the bare decoder advances and reads without checking <code>end</code>, this becomes a four-byte out-of-bounds read when <code>p == end</code>.
-</p>
-
-<p>
-    The resulting value is not merely discarded. It becomes the watcher count passed directly into:
+    The value read from beyond the receive buffer is subsequently used as
+    the watcher count:
 </p>
 ```
 
@@ -256,7 +272,9 @@ p == end
 
 ```
 <p>
-    Consequently, memory located beyond the validated receive buffer can influence the allocation-count decision taken by the parser.
+    This makes the unchecked decode security-relevant beyond the memory
+    access itself: memory outside the validated message can influence a
+    subsequent allocation-count decision.
 </p>
 ```
 
@@ -267,7 +285,7 @@ p == end
 
 ```
 <p>
-    The vulnerable code in <code>decode_watchers()</code> was:
+    The vulnerable code was:
 </p>
 ```
 
@@ -284,11 +302,13 @@ if (!*watchers)
 
 ```
 <p>
-    There is no bounds validation between the successful return from <code>ceph_start_decoding()</code> and the four-byte decode.
+    No boundary check occurs between the successful return from
+    <code>ceph_start_decoding()</code> and the four-byte decode.
 </p>
 
 <p>
-    This is particularly notable because the sibling parser <code>decode_watcher()</code> already follows the defensive decoding pattern:
+    The sibling <code>decode_watcher()</code> function already used the
+    bounds-aware decoding pattern:
 </p>
 ```
 
@@ -300,25 +320,14 @@ ceph_decode_skip_32(p, end, ...);
 
 ```
 <p>
-    Those helpers explicitly verify that sufficient bytes remain before advancing the parser cursor. <code>decode_watchers()</code> was the inconsistent site that retained a bare decoder for the watcher count.
-</p>
-
-<h3>Safe decoding pattern</h3>
-
-<p>
-    The fix changes the operation to the existing bounds-checked variant:
+    The fix brings <code>decode_watchers()</code> in line with this
+    established pattern.
 </p>
 ```
 
 <pre>
 ceph_decode_32_safe(p, end, *num_watchers, bad);
 </pre>
-
-```
-<p>
-    The safe decoder verifies that four bytes remain between <code>p</code> and <code>end</code>. If the malformed reply leaves <code>p == end</code>, decoding fails immediately rather than reading beyond the receive buffer.
-</p>
-```
 
 </section>
 
@@ -327,7 +336,8 @@ ceph_decode_32_safe(p, end, *num_watchers, bad);
 
 ```
 <p>
-    The condition was verified using a KASAN-instrumented kernel on <code>7.0.0-rc7</code> under QEMU/x86_64 with KASLR disabled.
+    The condition was verified using a KASAN-instrumented Linux
+    <code>7.0.0-rc7</code> kernel under QEMU/x86_64 with KASLR disabled.
 </p>
 ```
 
@@ -339,28 +349,8 @@ struct_len=0 p==end: 1
 [   72.050699] ==================================================
 [   72.051427] BUG: KASAN: slab-out-of-bounds in
 ceph_oob_init+0x128/0xff0 [ceph_oob_poc]
-
 [   72.051427] Read of size 4 at addr ffff8880085936ce
 by task insmod/61
-
-[   72.051427] CPU: 0 UID: 0 PID: 61 Comm: insmod
-Tainted: G O
-[   72.051427] 7.0.0-rc7-g9c2abf69da83-dirty #14 PREEMPT(lazy)
-
-Call Trace:
-[   72.051427] dump_stack_lvl+0x4d/0x70
-[   72.051427] print_report+0x170/0x4f3
-[   72.051427] kasan_report+0xda/0x110
-[   72.051427] kasan_check_range+0x125/0x200
-[   72.051427] ceph_oob_init+0x128/0xff0 [ceph_oob_poc]
-[   72.051427] do_one_initcall+0x9a/0x310
-[   72.051427] do_init_module+0x186/0x410
-[   72.051427] load_module+0x2ba7/0x2e50
-[   72.051427] init_module_from_file+0x15c/0x180
-[   72.051427] idempotent_init_module+0x19f/0x430
-[   72.051427] __x64_sys_finit_module+0x78/0xc0
-[   72.051427] do_syscall_64+0xe2/0x570
-[   72.051427] entry_SYSCALL_64_after_hwframe+0x77/0x7f
 
 [   72.051427] The buggy address belongs to the object at
 ffff8880085936c8
@@ -368,14 +358,13 @@ ffff8880085936c8
 [   72.051427] which belongs to the cache kmalloc-8 of size 8
 
 [   72.051427] The buggy address is located 0 bytes to the right of
-allocated 6-byte region
-[ffff8880085936c8, ffff8880085936ce)
+allocated 6-byte region [ffff8880085936c8, ffff8880085936ce)
 
 [   72.051427] Memory state around the buggy address:
 
 [   72.051427] >ffff888008593680:
 fc fc fc fc fc fc fc fc fc 06 fc fc fc fc fc fc
-[   72.051427]                                               ^
+                                              ^
 [   72.051427] ==================================================
 
 [   72.129720] ceph_oob_poc: num_watchers=3435973836
@@ -383,35 +372,10 @@ fc fc fc fc fc fc fc fc fc 06 fc fc fc fc fc fc
 </pre>
 
 ```
-<h3>Anatomy of the read</h3>
+<h3>Why 0xCCCCCCCC Matters</h3>
 
 <p>
-    The allocated buffer occupied the six-byte range:
-</p>
-```
-
-<pre>
-[ffff8880085936c8, ffff8880085936ce)
-</pre>
-
-```
-<p>
-    The decoding cursor was positioned at <code>0xffff8880085936ce</code>, exactly one byte beyond the valid range. The bare decoder then attempted a four-byte read starting from that address.
-</p>
-
-<p>
-    KASAN identified the operation as a slab out-of-bounds read and reported that the access occurred immediately to the right of the six-byte allocation.
-</p>
-```
-
-</section>
-
-<section class="section">
-    <h2>6. Why 0xCCCCCCCC Matters</h2>
-
-```
-<p>
-    The observed watcher count was:
+    The observed value was:
 </p>
 ```
 
@@ -422,63 +386,68 @@ num_watchers = 3435973836
 
 ```
 <p>
-    This value corresponds to KASAN poison/redzone memory in the test environment rather than valid protocol data. Its appearance demonstrates that the decode operation crossed the boundary of the allocated object and consumed memory beyond the six-byte receive buffer.
-</p>
-
-<p>
-    In this reproduction, the value is therefore useful as direct evidence of the invalid memory access. The important security property is the bounds violation itself: a malformed encoded structure was accepted by the header parser, after which the next mandatory field was decoded without independently verifying that its bytes remained available.
+    In the KASAN environment this corresponds to poisoned redzone memory,
+    confirming that the four-byte decode consumed memory immediately
+    beyond the allocated receive buffer.
 </p>
 ```
 
 </section>
 
 <section class="section">
-    <h2>7. Threat Model & Impact Assessment</h2>
+    <h2>6. Threat Model & Impact Assessment</h2>
 
 ```
 <ul>
     <li>
-        <strong>Primary Primitive:</strong> A four-byte slab out-of-bounds read beyond the validated Ceph reply buffer.
+        <strong>CVE:</strong> CVE-2026-80557.
     </li>
 
     <li>
-        <strong>Data Flow:</strong> The value obtained from out-of-bounds memory is assigned to <code>*num_watchers</code> and passed into <code>kzalloc_objs()</code> as the watcher allocation count.
+        <strong>Primary Primitive:</strong> Four-byte slab out-of-bounds
+        read.
     </li>
 
     <li>
-        <strong>Attack Vector:</strong> A malicious or compromised OSD sends a malformed <code>obj_list_watch_response_t</code> reply with <code>struct_len=0</code>.
+        <strong>Data Flow:</strong> The value obtained from out-of-bounds
+        memory is passed into the watcher allocation-count path.
     </li>
 
     <li>
-        <strong>Reachable Operation:</strong> The affected parser processes replies associated with <code>CEPH_OSD_OP_LIST_WATCHERS</code>.
+        <strong>Attack Vector:</strong> A malicious or compromised OSD
+        provides a malformed <code>obj_list_watch_response_t</code> reply.
     </li>
 
     <li>
-        <strong>Required Position:</strong> The attacker must be able to provide the relevant OSD response to the kernel Ceph client.
+        <strong>Reachable Operation:</strong>
+        <code>CEPH_OSD_OP_LIST_WATCHERS</code>.
     </li>
 
     <li>
-        <strong>Privilege Requirement:</strong> Under the stated threat model, no additional local privilege is required after the attacker can act as, control, or compromise the responding OSD.
+        <strong>Privilege Model:</strong> Under the stated attacker model,
+        no additional privilege is required after the attacker can
+        establish or control the relevant OSD session.
     </li>
 </ul>
 
 <p>
-    The demonstrated bug is a memory-safety violation resulting in an out-of-bounds read. The KASAN reproduction confirms the read primitive and the propagation of the resulting value into the watcher-count allocation path.
-</p>
-
-<p>
-    The exact consequences beyond the demonstrated out-of-bounds read can depend on allocator state, surrounding memory, protocol handling, and the caller context. Therefore, this write-up does not claim exploitation capabilities beyond those directly demonstrated by the supplied reproduction.
+    The KASAN reproduction directly establishes the out-of-bounds read and
+    its propagation into the watcher-count path. Further consequences can
+    depend on allocator state and surrounding kernel execution context, so
+    this analysis does not claim exploitation capabilities beyond the
+    demonstrated primitive.
 </p>
 ```
 
 </section>
 
 <section class="section">
-    <h2>8. Remediation</h2>
+    <h2>7. Remediation</h2>
 
 ```
 <p>
-    The upstream fix replaces the bare decoder with the existing bounds-checked helper and adds a malformed-message error path:
+    The upstream fix replaces the bare decoder with its bounds-checked
+    equivalent:
 </p>
 ```
 
@@ -508,83 +477,25 @@ index 2ff00070c..2cdac81a6 100644
 
 ```
 <p>
-    The safe variant receives both the current cursor and the buffer boundary:
-</p>
-```
-
-<pre>
-ceph_decode_32_safe(p, end, *num_watchers, bad);
-</pre>
-
-```
-<p>
-    Before reading the four-byte value, it verifies that sufficient bytes remain. A malformed reply that leaves <code>p == end</code> therefore takes the <code>bad</code> path and returns <code>-EINVAL</code> instead of accessing memory outside the validated message.
+    <code>ceph_decode_32_safe()</code> verifies that four bytes remain
+    before performing the decode. A malformed reply leaving
+    <code>p == end</code> is therefore rejected with
+    <code>-EINVAL</code>.
 </p>
 ```
 
 </section>
 
 <section class="section">
-    <h2>9. Why the Fix Is Correct</h2>
-
-```
-<p>
-    The fix does not alter the protocol layout or introduce new parsing semantics. It enforces the same invariant already used throughout adjacent Ceph decoding code: every variable-length or fixed-width field must verify that the required bytes remain before it is consumed.
-</p>
-
-<p>
-    The sibling <code>decode_watcher()</code> implementation already demonstrates this approach through safe decoding helpers. Applying the same pattern to the watcher-count field closes the gap created by relying solely on the earlier structure-header validation.
-</p>
-
-<p>
-    This distinction is important:
-</p>
-```
-
-<pre>
-ceph_start_decoding()
-    validates the encoded structure header and declared length
-
-ceph_decode_32_safe()
-    validates the availability of the next four-byte field
-</pre>
-
-```
-<p>
-    Successful validation of the first property does not guarantee the second when the declared structure length is zero.
-</p>
-```
-
-</section>
-
-<section class="section">
-    <h2>10. Affected Configurations</h2>
+    <h2>8. Affected Configurations</h2>
 
 ```
 <ul>
-    <li>
-        <strong>Vulnerable Component:</strong> Linux kernel <code>libceph</code> client.
-    </li>
-
-    <li>
-        <strong>Source File:</strong> <code>net/ceph/osd_client.c</code>.
-    </li>
-
-    <li>
-        <strong>Vulnerable Function:</strong> <code>decode_watchers()</code>.
-    </li>
-
-    <li>
-        <strong>Reachable Protocol Path:</strong> Processing an OSD response for <code>CEPH_OSD_OP_LIST_WATCHERS</code>.
-    </li>
-
-    <li>
-        <strong>Configuration Requirement:</strong> A kernel client using Ceph client functionality and communicating with an OSD capable of supplying the malformed response.
-    </li>
-
-    <li>
-        <strong>Threat Model:</strong> A malicious or compromised OSD, including an OSD operating in an environment where the kernel client does not fully trust every responding storage peer.
-    </li>
+    <li><strong>Vulnerable Component:</strong> Linux kernel <code>libceph</code>.</li>
+    <li><strong>Source File:</strong> <code>net/ceph/osd_client.c</code>.</li>
+    <li><strong>Vulnerable Function:</strong> <code>decode_watchers()</code>.</li>
+    <li><strong>Protocol Operation:</strong> <code>CEPH_OSD_OP_LIST_WATCHERS</code>.</li>
+    <li><strong>Threat Model:</strong> Kernel clients receiving replies from a malicious or compromised OSD.</li>
 </ul>
 ```
 
@@ -592,43 +503,40 @@ ceph_decode_32_safe()
 
 <section class="section">
 
-<h2>11. Upstream Patch & Timeline</h2>
+<h2>9. Upstream Patch & Timeline</h2>
 
 <p>
-The vulnerability was fixed upstream in <code>net/ceph/osd_client.c</code> by replacing the unsafe bare watcher-count decode with <code>ceph_decode_32_safe()</code>.
+CVE-2026-80557 was assigned to the out-of-bounds read condition in
+<code>decode_watchers()</code>.
 </p>
 
 <p>
-The patch identifies commit <code>a4ed38d7a180</code> ("libceph: support for CEPH_OSD_OP_LIST_WATCHERS") as the introducing commit and includes <code>Cc: stable@vger.kernel.org</code> for stable-tree consideration.
-</p>
-
-<p>
-The final revision incorporated review feedback from Viacheslav Dubeyko. Version 3 renamed the error label from <code>e_inval</code> to <code>bad</code>. Version 2 corrected the commit message and retracted earlier overstated impact claims after verification with a follow-up KASAN harness.
-</p>
-
-<p>
-The patch received:
+The upstream fix commit is:
 </p>
 
 <pre>
-Reviewed-by: Viacheslav Dubeyko &lt;Slava.Dubeyko@ibm.com&gt;
-Signed-off-by: Pavitra Jha &lt;jhapavitra98@gmail.com&gt;
+00ead17c7de137a692edee59f2772e6af687e8eb
 </pre>
 
 <p>
-On August 13, 2026, Ceph client maintainer Ilya Dryomov replied:
+The vulnerable functionality was introduced by:
 </p>
 
 <pre>
-Applied.
-
-Thanks,
-
-                Ilya
+a4ed38d7a180 ("libceph: support for CEPH_OSD_OP_LIST_WATCHERS")
 </pre>
 
 <p>
-The final upstream patch therefore addresses the malformed zero-length structure case by ensuring the watcher count cannot be decoded unless four bytes remain inside the validated reply buffer.
+The patch was submitted with <code>Cc: stable@vger.kernel.org</code> and
+was applied upstream. The final revision incorporated review feedback and
+used the existing safe decode pattern already present in related libceph
+parsers.
+</p>
+
+<p>
+The final fix is conceptually small but restores an important parser
+invariant: every fixed-width field must independently establish that its
+bytes remain available before decoding.
 </p>
 
 <p>
@@ -642,43 +550,7 @@ lore.kernel.org/all/?q=Pavitra+Jha
 
 </section>
 
-<section class="section">
-
-<h2>12. Key Takeaway</h2>
-
-<p>
-This vulnerability illustrates a subtle but important parser invariant: successful validation of an encoded structure header does not automatically validate every field subsequently decoded from that structure.
-</p>
-
-<p>
-A zero-length structure can legitimately satisfy a length check while leaving the parser cursor positioned exactly at the end of the buffer. Any subsequent bare decode then becomes unsafe unless it independently establishes that its required bytes remain.
-</p>
-
-<pre>
-struct_len = 0
-      |
-      v
-ceph_start_decoding() succeeds
-      |
-      v
-p == end
-      |
-      v
-bare ceph_decode_32()
-      |
-      X
-      |
-4-byte out-of-bounds read
-</pre>
-
-<p>
-Replacing the bare decode with <code>ceph_decode_32_safe()</code> restores that missing invariant and causes malformed replies to be rejected before memory outside the validated message boundary is accessed.
-</p>
-
-</section>
-
 <div class="section">
-
 <h2>Author</h2>
 
 <p>
