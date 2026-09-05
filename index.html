@@ -28,8 +28,6 @@
 </a>
           <a href="#public-record">          Public Record
 </a>
-          <a href="#blog">          Vulnerability Research
-</a>
           <a href="#recognition">          Recognition
 </a>
           <a href="#capability">          Capability
@@ -75,6 +73,9 @@
         <h2>
           Featured Research
         </h2>
+        <p>
+          Write-ups on kernel exploitation, driver-level memory corruption, and system-level vulnerability analysis across real attack surfaces.
+        </p>
         <div class="feature-grid">
           <div class="card feature-card">
             <div class="feature-tag">CVE-2026-43495 &middot; CVSS 8.8 High</div>
@@ -188,65 +189,6 @@
           Long interview going deep on my exploitation workflow.
           <br />
           <a href="https://www.youtube.com/watch?v=K3DENG8kdYA">          YouTube Video
-</a>
-        </div>
-      </section>
-      <!-- ===================== -->
-      <!-- BLOG -->
-      <!-- ===================== -->
-      <section id="blog">
-        <h2>
-          Selected Vulnerability Research
-        </h2>
-        <p>
-          Write-ups on kernel exploitation, driver-level memory corruption, and system-level vulnerability analysis across real attack surfaces.
-        </p>
-        <div class="card">
-          Unchecked modem input: OOB read in the Linux kernel t7xx WWAN driver (CVE-2026-43495, CVSS 8.8)
-          <br />
-          <a href="blog/t7xx-oob-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          wIndex out of bounds: host-controlled memory corruption in the MAX3420 UDC driver
-          <br />
-          <a href="blog/max3420-oob-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          FOTG210 USB device controller: slab OOB in the X3 functions
-          <br />
-          <a href="blog/fotg210-oob-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          Race conditions and deadlocks: use-after-free in the Silicon Labs wfx wireless driver
-          <br />
-          <a href="blog/wfx-use-after-free-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          NTFS3 file system driver: two OOB flaws in log_replay infrastructure (CVE-2026-64532, CVE-2026-64533, CVSS 7.2 each)
-          <br />
-          <a href="blog/ntfs3-log_replay-oob-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          libceph decode_lockers(): two unchecked bare decodes, count and lock type (CVE-2026-68082, CVSS 9.8)
-          <br />
-          <a href="blog/Ceph-oob1-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          libceph decode_locker(): three unbounded decode/skip operations in one function (CVE-2026-80561, CVSS 9.8)
-          <br />
-          <a href="blog/Ceph-oob3-writeup.html">          Read Writeup
-</a>
-        </div>
-        <div class="card">
-          libceph decode_watchers(): unchecked watcher-count decode feeding an allocation size (CVE-2026-80557, CVSS 9.8)
-          <br />
-          <a href="blog/Ceph-oob2-writeup.html">          Read Writeup
 </a>
         </div>
       </section>
