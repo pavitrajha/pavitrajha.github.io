@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Linux libceph decode_watchers() Out-of-Bounds Read (CVE-2026-80557)</title>
+<link rel="stylesheet" href="../style.css" />
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for "research blog" feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>Linux libceph: OOB Read in decode_watchers() (CVE-2026-80557)</h1>
+<p class="meta">
+Linux Kernel libceph Client | net/ceph/osd_client.c | Slab Memory Safety | Vulnerability Write-up
+</p>
+</header>
+
+<section class="section">
+    <h2>1. Summary</h2>
+    <p>
+        CVE-2026-80557 is an out-of-bounds read vulnerability in the Linux
+        kernel's <code>libceph</code> client within <code>decode_watchers()</code>
+        in <code>net/ceph/osd_client.c</code>.
+    </p>
+    <p>
+        The function used a bare <code>ceph_decode_32()</code> operation
+        immediately after <code>ceph_start_decoding()</code>, without verifying
+        that four bytes remained in the received OSD reply buffer.
+    </p>
+    <p>
+        The root cause is that <code>ceph_start_decoding()</code> accepts
+        <code>struct_len=0</code> as valid. The internal
+        <code>ceph_decode_need(p, end, 0, bad)</code> check succeeds because
+        zero bytes are required. This can leave the decoding cursor positioned
+        exactly at <code>end</code>.
+    </p>
+    <p>
+        The immediately following <code>ceph_decode_32(p)</code> then reads
+        four bytes past the validated buffer boundary. The resulting value is
+        assigned to <code>*num_watchers</code> and passed into
+        <code>kzalloc_objs()</code> as the watcher allocation count.
+    </p>
+</section>
+
+<section class="section">
+    <h2>2. Vulnerability Execution Path</h2>
+    <p>
+        The vulnerable parser processes replies associated with
+        <code>CEPH_OSD_OP_LIST_WATCHERS</code>:
+    </p>
+    <pre>
+net/ceph/osd_client.c
+  |
+  v
+Kernel Ceph client processes OSD reply
+  |
+  v
+decode_watchers()
+  |
+  +-- ceph_start_decoding()
+  |     |
+  |     +-- struct_len=0 accepted
+  |     |
+  |     +-- p == end
+  |
+  v
+*num_watchers = ceph_decode_32(p)
+  |
+  +-- No bounds check
+  |
+  +-- 4-byte read past end
+  |
+  v
+kzalloc_objs(**watchers, *num_watchers, GFP_NOIO)
+    </pre>
+    <p>
+        A malicious or compromised OSD can provide an
+        <code>obj_list_watch_response_t</code> reply with
+        <code>struct_len=0</code>. The structure header is accepted, but the
+        parser immediately attempts to decode a four-byte watcher count from
+        a position where no bytes remain.
+    </p>
+</section>
+
+<section class="section">
+    <h2>3. Vulnerability Description & Mechanics</h2>
+    <p>
+        The vulnerable decoding sequence is:
+    </p>
+    <pre>
+ceph_start_decoding(p, end, 1, "obj_list_watch_response_t",
+                    &struct_v, &struct_len);
+
+*num_watchers = ceph_decode_32(p); </pre> <p>
+Successful validation of the structure header does not guarantee that
+subsequent fields remain available. </p> <pre>
+struct_len = 0
+|
+v
+ceph_start_decoding() succeeds
+|
+v
+p == end
+|
+v
+ceph_decode_32(p)
+|
+X
+|
+4-byte out-of-bounds read </pre> <p>
+The value read from beyond the receive buffer is subsequently used as
+the watcher count: </p> <pre>
+*watchers = kzalloc_objs(**watchers, *num_watchers, GFP_NOIO); </pre> <p>
+This makes the unchecked decode security-relevant beyond the memory
+access itself: memory outside the validated message can influence a
+subsequent allocation-count decision. </p>
+
+</section>
+
+<section class="section">
+    <h2>4. Source Code Analysis</h2>
+    <p>
+        The vulnerable code was:
+    </p>
+    <pre>
+if (ret)
+        return ret;
+
+*num_watchers = ceph_decode_32(p);
+
+*watchers = kzalloc_objs(**watchers, *num_watchers, GFP_NOIO);
+if (!*watchers)
+return -ENOMEM; </pre> <p>
+No boundary check occurs between the successful return from <code>ceph_start_decoding()</code> and the four-byte decode. </p> <p>
+The sibling <code>decode_watcher()</code> function already used the
+bounds-aware decoding pattern: </p> <pre>
+ceph_decode_copy_safe(p, end, ...);
+ceph_decode_64_safe(p, end, ...);
+ceph_decode_skip_32(p, end, ...); </pre> <p>
+The fix brings <code>decode_watchers()</code> in line with this
+established pattern. </p> <pre>
+ceph_decode_32_safe(p, end, *num_watchers, bad); </pre>
+
+</section>
+
+<section class="section">
+    <h2>5. KASAN Log & Triage Data</h2>
+    <p>
+        The condition was verified using a KASAN-instrumented Linux
+        <code>7.0.0-rc7</code> kernel under QEMU/x86_64 with KASLR disabled.
+    </p>
+    <pre>
+[   72.047085] ceph_oob_poc: buf=ffff8880085936c8 end=ffff8880085936ce
+[   72.048685] ceph_oob_poc: ceph_start_decoding OK: struct_v=1
+struct_len=0 p==end: 1
+[   72.049477] ceph_oob_poc: triggering OOB read past slab boundary...
+[   72.050699] ==================================================
+[   72.051427] BUG: KASAN: slab-out-of-bounds in
+ceph_oob_init+0x128/0xff0 [ceph_oob_poc]
+[   72.051427] Read of size 4 at addr ffff8880085936ce
+by task insmod/61
+
+[   72.051427] The buggy address belongs to the object at
+ffff8880085936c8
+
+[   72.051427] which belongs to the cache kmalloc-8 of size 8
+
+[   72.051427] The buggy address is located 0 bytes to the right of
+allocated 6-byte region [ffff8880085936c8, ffff8880085936ce)
+
+[   72.051427] Memory state around the buggy address:
+
+[   72.051427] >ffff888008593680:
+fc fc fc fc fc fc fc fc fc 06 fc fc fc fc fc fc
+^
+[   72.051427] ==================================================
+
+[   72.129720] ceph_oob_poc: num_watchers=3435973836
+(OOB garbage) </pre> <h3>Why 0xCCCCCCCC Matters</h3> <p>
+The observed value was: </p> <pre>
+num_watchers = 3435973836
+= 0xCCCCCCCC </pre> <p>
+In the KASAN environment this corresponds to poisoned redzone memory,
+confirming that the four-byte decode consumed memory immediately
+beyond the allocated receive buffer. </p>
+
+</section>
+
+<section class="section">
+    <h2>6. Threat Model & Impact Assessment</h2>
+    <ul>
+        <li>
+            <strong>Primary Primitive:</strong> Four-byte slab out-of-bounds
+            read.
+        </li>
+        <li>
+            <strong>Data Flow:</strong> The value obtained from out-of-bounds
+            memory is passed into the watcher allocation-count path.
+        </li>
+        <li>
+            <strong>Attack Vector:</strong> A malicious or compromised OSD
+            provides a malformed <code>obj_list_watch_response_t</code>
+            reply.
+        </li>
+        <li>
+            <strong>Reachable Operation:</strong>
+            <code>CEPH_OSD_OP_LIST_WATCHERS</code>.
+        </li>
+        <li>
+            <strong>Privilege Model:</strong> Under the stated attacker model,
+            no additional privilege is required after the attacker can
+            establish or control the relevant OSD session.
+        </li>
+    </ul>
+    <p>
+        The KASAN reproduction directly establishes the out-of-bounds read and
+        its propagation into the watcher-count path. Further consequences can
+        depend on allocator state and surrounding kernel execution context, so
+        this analysis does not claim exploitation capabilities beyond the
+        demonstrated primitive.
+    </p>
+</section>
+
+<section class="section">
+    <h2>7. Remediation</h2>
+    <p>
+        The upstream fix replaces the bare decoder with its bounds-checked
+        equivalent:
+    </p>
+    <pre>
+diff --git a/net/ceph/osd_client.c b/net/ceph/osd_client.c
+index 2ff00070c..2cdac81a6 100644
+--- a/net/ceph/osd_client.c
++++ b/net/ceph/osd_client.c
+@@ -5030,7 +5030,7 @@ static int decode_watchers(void **p, void *end,
+        if (ret)
+                return ret;
+
+*  
+    *num_watchers = ceph_decode_32(p);
+   
+
+-  
+    ceph_decode_32_safe(p, end, *num_watchers, bad);
+    *watchers = kzalloc_objs(**watchers, *num_watchers, GFP_NOIO);
+    if (!*watchers)
+            return -ENOMEM;
+   
+
+@@ -5044,6 +5044,8 @@ static int decode_watchers(void **p, void *end,
+}
+
+ 
+    return 0;
+ 
+
++bad:
++
+
+*  
+    return -EINVAL;
+   
+
+} </pre> <p> <code>ceph_decode_32_safe()</code> verifies that four bytes remain
+before performing the decode. A malformed reply leaving <code>p == end</code> is therefore rejected with <code>-EINVAL</code>. </p>
+
+</section>
+
+<section class="section">
+    <h2>8. Affected Configurations</h2>
+    <ul>
+        <li><strong>Vulnerable Component:</strong> Linux kernel <code>libceph</code>.</li>
+        <li><strong>Source File:</strong> <code>net/ceph/osd_client.c</code>.</li>
+        <li><strong>Vulnerable Function:</strong> <code>decode_watchers()</code>.</li>
+        <li><strong>Protocol Operation:</strong> <code>CEPH_OSD_OP_LIST_WATCHERS</code>.</li>
+        <li><strong>Threat Model:</strong> Kernel clients receiving replies from a malicious or compromised OSD.</li>
+    </ul>
+</section>
+
+<section class="section">
+    <h2>9. Upstream Patch & Timeline</h2>
+    <p>
+        CVE-2026-80557 was assigned to the out-of-bounds read condition in
+        <code>decode_watchers()</code>.
+    </p>
+    <p>
+        The upstream fix commit is:
+    </p>
+    <pre>
+00ead17c7de137a692edee59f2772e6af687e8eb
+    </pre>
+    <p>
+        The vulnerable functionality was introduced by:
+    </p>
+    <pre>
+a4ed38d7a180 ("libceph: support for CEPH_OSD_OP_LIST_WATCHERS")
+    </pre>
+    <p>
+        The patch was submitted with <code>Cc: stable@vger.kernel.org</code>
+        and was applied upstream. The final revision incorporated review
+        feedback and used the existing safe decode pattern already present in
+        related libceph parsers.
+    </p>
+    <p>
+        The final fix is conceptually small but restores an important parser
+        invariant: every fixed-width field must independently establish that
+        its bytes remain available before decoding.
+    </p>
+    <p>
+        <strong>LKML Activity & Patch History:</strong>
+        <a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+        target="_blank"
+        rel="noopener noreferrer">
+        lore.kernel.org/all/?q=Pavitra+Jha
+        </a>
+    </p>
+</section>
+
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+
+</div>
+
+</body>
+</html>

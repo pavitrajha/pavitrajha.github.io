@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ntfs3 Log Replay Vulnerabilities</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* CVE tag — inline badge next to section headings */
+.cve-tag {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #7fb3ff;
+    border: 1px solid #24405e;
+    background: #111e2c;
+    border-radius: 5px;
+    padding: 2px 8px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for “research blog” feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>NTFS3 file system driver: Multiple Heap Corruption Flaws in Log Replay Infrastructure</h1>
+<p class="meta">
+Paragon ntfs3 driver | Linux kernel | Heap OOB X2 | Local Privilege Escalation &amp; Memory Corruption via Malformed Images | CVE-2026-64532, CVE-2026-64533
+</p>
+</header>
+
+<section class="section">
+    <h2>1. Heap Out-of-Bounds Write via Unvalidated data_off <span class="cve-tag">CVE-2026-64532</span></h2>
+    
+    <h3>Summary</h3>
+    <p>
+        A bounds-check omission exists in <code>fs/ntfs3/fslog.c</code> that leads to an attacker-controlled relative heap out-of-bounds write via an unvalidated <code>data_off</code> field in the <code>log_replay()</code> function. The issue affects both the <code>UpdateRecordDataRoot</code> and <code>UpdateRecordDataAllocation</code> code execution branches.
+    </p>
+    <p>
+        The flaw triggers during mount-time log recovery of an uncleanly unmounted filesystem. An attacker capable of providing a corrupted or crafted NTFS image can exploit this to corrupt adjacent kernel heap allocations.
+    </p>
+
+    <h3>Vulnerability Details</h3>
+    <p>
+        The <code>NTFS_DE</code> directory entry structure contains an attacker-controlled 16-bit field read straight from on-disk filesystem metadata:
+    </p>
+<pre>
+struct NTFS_DE {
+    struct MFT_REF ref;
+    __le16 size;
+    __le16 key_size;
+    __le16 flags;
+    __le16 reserved;
+    union {
+        struct {
+            __le16 data_off;   /* Attacker-controlled offset */
+            __le16 data_size;
+        } view;
+    };
+};
+</pre>
+    <p>
+        During log replay dispatch operations, this unvalidated <code>data_off</code> field is used directly in destination pointer arithmetic inside a <code>memmove()</code> operation without checking entry bounds:
+    </p>
+<pre>
+case UpdateRecordDataRoot:
+    root = resident_data(attr);
+    hdr = &root->ihdr;
+
+    if (!check_if_index_root(rec, lrh) || !check_if_root_index(attr, hdr, lrh)) {
+        goto dirty_vol;
+    }
+    
+    e = Add2Ptr(attr, le16_to_cpu(lrh->attr_off));
+    memmove(
+        Add2Ptr(e, le16_to_cpu(e->view.data_off)), /* Destination address calculation */
+        data,
+        dlen
+    );
+    mi->dirty = true;
+    break;
+</pre>
+    <p>
+        The target pointer resolves directly to <code>e + e->view.data_off</code>. Because <code>data_off</code> can be scaled up to <code>0xFFFF</code> (65535), the write range completely escapes the logical boundaries of the <code>NTFS_DE</code> allocation frame.
+    </p>
+
+    <h3>Root Cause</h3>
+    <p>
+        The preexisting precondition filters (<code>check_if_index_root</code> and <code>check_if_root_index</code>) ensure structural alignment of record layouts but fail to check fields localized inside the targeted record. 
+    </p>
+    <p>
+        The driver tracks the logical entry boundary using <code>e->size</code>, but fails to use it as a safety constraint during the memory modification path. No validation ensures that:
+    </p>
+<pre>
+data_off &lt;= e->size  &amp;&amp;  dlen &lt;= e->size - data_off
+</pre>
+
+    <h3>Minimal Trigger Configuration</h3>
+    <p>
+        A minimal malformed replay log context to hit the sink requires the following metadata mappings:
+    </p>
+<pre>
+lrh->record_off   = [Valid ATTR_ROOT offset]
+lrh->attr_off      = [Valid NTFS_DE boundary alignment]
+e->view.data_off  = 0x7FFE
+dlen              = [Attacker-defined byte length]
+
+Execution output:
+e = Add2Ptr(attr, lrh->attr_off)
+memmove(Add2Ptr(e, 0x7FFE), attacker_payload, dlen) -> Out-of-Bounds Heap Write
+</pre>
+    <p>
+        An identical secondary instance of this exact structural bypass is reachable via the <code>UpdateRecordDataAllocation</code> branch:
+    </p>
+<pre>
+e = Add2Ptr(hdr, le32_to_cpu(aoff));
+memmove(
+    Add2Ptr(e, le16_to_cpu(e->view.data_off)),
+    data,
+    dlen
+);
+</pre>
+
+    <h3>Impact</h3>
+    <ul>
+        <li>Relative kernel heap out-of-bounds write</li>
+        <li>Arbitrary adjacent slab corruption</li>
+        <li>Local privilege escalation (LPE) capabilities on systems where local or unprivileged mounting vectors are allowed (e.g., via automount daemons or user namespaces)</li>
+    </ul>
+
+    <h3>Fix</h3>
+    <p>
+        Enforce rigid entry bounds validation constraints inside both functional branches before invoking memory writes:
+    </p>
+<pre>
+/* UpdateRecordDataRoot Case */
+e = Add2Ptr(attr, le16_to_cpu(lrh->attr_off));
+{
+    u32 off  = le16_to_cpu(e->view.data_off);
+    u32 size = le16_to_cpu(e->size);
+    if (off > size || dlen > size - off)
+        goto dirty_vol;
+}
+memmove(Add2Ptr(e, le16_to_cpu(e->view.data_off)), data, dlen);
+
+/* UpdateRecordDataAllocation Case */
+e = Add2Ptr(hdr, le32_to_cpu(aoff));
+{
+    u32 off  = le16_to_cpu(e->view.data_off);
+    u32 size = le16_to_cpu(e->size);
+    if (off > size || dlen > size - off)
+        goto dirty_vol;
+}
+memmove(Add2Ptr(e, le16_to_cpu(e->view.data_off)), data, dlen);
+</pre>
+</section>
+
+<section class="section">
+    <h2>2. Heap Out-of-Bounds Read/Write via lcns_follow <span class="cve-tag">CVE-2026-64533</span></h2>
+    
+    <h3>Summary</h3>
+    <p>
+        An unvalidated length argument in <code>fs/ntfs3/fslog.c</code> leads to an out-of-bounds read and write via an attacker-controlled <code>lcns_follow</code> field. This occurs during version 0 to version 1 conversion of the dirty page table inside <code>log_replay()</code>.
+    </p>
+    <p>
+        The issue resides in on-disk filesystem metadata parsing, where an inline code warning left by the developer explicitly notes: <code>// NOTE: Danger. Check for of boundary.</code> but was left unhandled in production code.
+    </p>
+
+    <h3>Vulnerability Details</h3>
+    <p>
+        When the driver encounters a version 0 <code>$LogFile</code> journal restart area during a mount-time log recovery sequence, it performs an in-place mutation of <code>DIR_PAGE_ENTRY_32</code> structures into <code>DIR_PAGE_ENTRY</code> layouts inside the allocated <code>dptbl</code> heap buffer:
+    </p>
+<pre>
+dp = NULL;
+while ((dp = enum_rstbl(dptbl, dp))) {
+    struct DIR_PAGE_ENTRY_32 *dp0 = (struct DIR_PAGE_ENTRY_32 *)dp;
+    // NOTE: Danger. Check for of boundary.
+    memmove(&dp->vcn, &dp0->vcn_low,
+            2 * sizeof(u64) +
+                 le32_to_cpu(dp->lcns_follow) * sizeof(u64));
+}
+</pre>
+    <p>
+        The <code>lcns_follow</code> field dictates the size of the trailing flexible array member. Because it is read straight from the raw partition without validation, providing an inflated value like <code>0x1FFFFFFF</code> yields a <code>memmove</code> size parameter calculation totaling <code>0x100000010</code> bytes (~4GB).
+    </p>
+
+    <h3>Root Cause</h3>
+    <p>
+        The <code>check_rstbl()</code> sanity checker ensures the overarching <code>RESTART_TABLE</code> dimensions line up with raw image bounds, but it ignores interior field bounds testing for <code>lcns_follow</code>. 
+    </p>
+    <p>
+        The kernel contains an internal mathematical equation used during the native allocation path to calculate safe boundaries:
+    </p>
+<pre>
+max_lcns = (le16_to_cpu(dptbl->size) - sizeof(struct DIR_PAGE_ENTRY)) / sizeof(u64);
+</pre>
+    <p>
+        This formula is never applied to validate the on-disk structural field boundaries prior to executing the data movement loop.
+    </p>
+
+    <h3>Secondary Exploit Sink</h3>
+    <p>
+        The unvalidated <code>lcns_follow</code> integer persists within the entry object into downstream analysis routines. In the later <code>DeleteDirtyClusters</code> execution phase, the driver loops using the unvalidated tracker variable directly as an array index limit:
+    </p>
+<pre>
+while ((dp = enum_rstbl(dptbl, dp))) {
+    u32 j;
+    t32 = le32_to_cpu(dp->lcns_follow);
+    for (j = 0; j &lt; t32; j++) {
+        t64 = le64_to_cpu(dp->page_lcns[j]); /* OOB Read */
+        if (t64 &gt;= lcn0 &amp;&amp; t64 &lt;= lcn_e)
+            dp->page_lcns[j] = 0;           /* OOB Write */
+    }
+}
+</pre>
+    <p>
+        This yields a distinct, secondary out-of-bounds read and write primitive within the same functional chain without requiring additional malformed payload segments.
+    </p>
+
+    <h3>Impact</h3>
+    <ul>
+        <li>Linear or indexed kernel heap corruption extending past the <code>dptbl</code> buffer.</li>
+        <li>Kernel panic conditions or memory leakage options via corrupted contiguous slabs.</li>
+        <li>Local privilege escalation potential where unprivileged image mounting actions are exposed (e.g., automount subsystems or local namespaces).</li>
+    </ul>
+
+    <h3>Fix</h3>
+    <p>
+        Validate the field using the kernel's existing structure bounds equation before triggering data block transformations:
+    </p>
+<pre>
+u32 max_lcns = (le16_to_cpu(dptbl->size) - sizeof(struct DIR_PAGE_ENTRY)) / sizeof(u64);
+
+dp = NULL;
+while ((dp = enum_rstbl(dptbl, dp))) {
+    struct DIR_PAGE_ENTRY_32 *dp0 = (struct DIR_PAGE_ENTRY_32 *)dp;
+    u32 lcns = le32_to_cpu(dp->lcns_follow);
+
+    if (lcns &gt; max_lcns)
+        goto dirty_vol;
+
+    memmove(&dp->vcn, &dp0->vcn_low, 2 * sizeof(u64) + lcns * sizeof(u64));
+}
+</pre>
+</section>
+
+<section class="section">
+    <h2>Affected Versions</h2>
+    <p>
+        All Linux kernel versions from version 5.15 onwards (matching the initial integration of Paragon's <code>ntfs3</code> implementation) where <code>CONFIG_NTFS3_FS</code> is compiled as a built-in or module component.
+    </p>
+</section>
+<section class="section">
+
+<h2>CVE Assignment</h2>
+
+<p>
+Both issues were assigned CVE identifiers by the Linux kernel CNA following backport into released stable trees:
+</p>
+
+<ul>
+    <li><span class="cve-tag">CVE-2026-64532</span> — <code>data_off</code> out-of-bounds write (<code>UpdateRecordDataRoot</code> / <code>UpdateRecordDataAllocation</code>), fix commit <code>3e127829e57f</code></li>
+    <li><span class="cve-tag">CVE-2026-64533</span> — <code>lcns_follow</code> out-of-bounds read/write (log_replay conversion), fix commit <code>6a4c53a2e26a</code></li>
+</ul>
+
+<p>
+Both fixes are in Linus's tree and backported to stable branches 5.15, 6.1, 6.6, 6.12, 6.18, and 7.1.
+</p>
+
+</section>
+<section class="section">
+
+<h2>Upstream Patch &amp; Timeline</h2>
+
+<p>
+The vulnerabilities were reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
+</p>
+
+<p>
+<strong>LKML Activity &amp; Patch History:</strong>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+target="_blank"
+rel="noopener noreferrer">
+lore.kernel.org/all/?q=Pavitra+Jha
+</a>
+</p>
+
+</section>
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FOTG210 UDC: Slab Out-of-Bounds via wIndex</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for “research blog” feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<article>
+
+<h1>FOTG210 USB Device Controller: slab out-of-bounds via attacker-controlled wIndex</h1>
+
+<p class="meta">
+FOTG210 USB UDC Driver | Linux Kernel USB Stack | Memory Corruption (Slab Out-of-Bounds) X3 | Endpoint Index Validation Failure 
+</p>
+    
+<div class="section">
+<h2>Overview</h2>
+
+<p>
+The FOTG210 USB device controller processes USB SETUP packets from a fully untrusted USB host.
+Endpoint selection is derived directly from the <code>wIndex</code> field without validating against the endpoint table size.
+</p>
+
+<p>
+The index derivation is:
+</p>
+
+<pre>
+ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK
+</pre>
+
+<p>
+This produces values in the range 0–15, while the endpoint array size is fixed at 5.
+</p>
+</div>
+
+<div class="section">
+<h2>Memory layout mismatch</h2>
+
+<pre>
+#define FOTG210_MAX_NUM_EP 5
+struct fotg210_ep *ep[5];
+</pre>
+
+<p>
+Valid index range: 0–4
+</p>
+
+<p>
+Heap layout constraint:
+</p>
+
+<pre>
+ep[] starts at offset 952 in struct fotg210_udc
+kmalloc-1k boundary at 1024 bytes
+</pre>
+
+<ul>
+<li>0–4 → valid endpoints</li>
+<li>5–8 → intra-object overwrite region</li>
+<li>9–15 → slab out-of-bounds access</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>Attack surface</h2>
+
+<p>
+USB SETUP packets are read directly from hardware FIFO and copied into driver state:
+</p>
+
+<pre>
+fotg210_rdsetupp()
+  → ioread32(FOTG210_CXPORT)
+  → ctrl structure populated
+  → dispatched to request handlers
+</pre>
+
+<p>
+No validation is performed on <code>wIndex</code> before it is used in endpoint selection.
+</p>
+</div>
+
+<div class="section">
+<h2>Vulnerability 1 - clear_feature OOB dereference</h2>
+
+<pre>
+ep = fotg210->ep[ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK];
+ep->wedged
+</pre>
+
+<p>
+The pointer is derived from an unchecked index and immediately dereferenced.
+</p>
+
+<pre>
+BUG: KASAN: slab-out-of-bounds in fotg210_clear_feature+0x2ba/0x2d0
+Read of size 8 at addr ffff888008d9ec30 by task insmod/61
+
+fotg210_clear_feature+0x2ba/0x2d0
+poc_init+0x1a7/0xff0
+
+The buggy address is located 120 bytes beyond a 952-byte allocation
+</pre>
+
+<p>Secondary failure:</p>
+
+<pre>
+KASAN: null-ptr-deref in range [0x0000000000000060-0x0000000000000067]
+RIP: fotg210_clear_feature+0x158/0x2d0
+RBP: 0x0000000000000000
+</pre>
+</div>
+
+<div class="section">
+<h2>Vulnerability 2 - set_feature MMIO corruption chain</h2>
+
+<pre>
+ep = fotg210->ep[epnum];
+fotg210_set_epnstall(ep);
+</pre>
+
+<p>
+Fields from the OOB endpoint pointer are used to compute MMIO register addresses,
+allowing heap corruption to influence hardware register access.
+</p>
+
+<pre>
+BUG: KASAN: slab-out-of-bounds in fotg210_set_feature+0x274/0x2a0
+Read of size 8 at addr ffff888008d9d430 by task insmod/62
+
+fotg210_set_feature+0x274/0x2a0
+poc_init+0x1a7/0xff0
+</pre>
+
+<p>Secondary crash:</p>
+
+<pre>
+KASAN: null-ptr-deref in range [0x0000000000000048-0x000000000000004f]
+RIP: fotg210_set_epnstall+0x26/0x230
+RDI: 0x0000000000000048
+</pre>
+</div>
+
+<div class="section">
+<h2>Vulnerability 3 - get_status information leak path</h2>
+
+<pre>
+fotg210_is_epnstall(fotg210->ep[epnum]);
+</pre>
+
+<p>
+OOB-derived endpoint fields influence MMIO reads and are propagated back into USB responses.
+</p>
+
+<pre>
+BUG: KASAN: slab-out-of-bounds in fotg210_get_status+0x465/0x4a0
+Read of size 8 at addr ffff888008d87c30 by task insmod/63
+
+fotg210_get_status+0x465/0x4a0
+poc_init+0x1a6/0xff0
+</pre>
+
+<p>Secondary crash:</p>
+
+<pre>
+KASAN: null-ptr-deref in range [0x0000000000000048-0x000000000000004f]
+RIP: fotg210_get_status+0x21b/0x4a0
+RDI: 0x0000000000000048
+</pre>
+</div>
+
+<div class="section">
+<h2>Impact</h2>
+
+<ul>
+<li>Slab out-of-bounds reads in kernel heap</li>
+<li>Cross-object memory interpretation via struct pointer reuse</li>
+<li>Indirect MMIO register manipulation via corrupted endpoint fields</li>
+<li>Information disclosure via USB control response path</li>
+</ul>
+</div>
+
+<div class="section">
+<h2>Root cause</h2>
+
+<p>
+The driver assumes that:
+</p>
+
+<pre>
+(wIndex & 0x0f) is always a valid endpoint index
+</pre>
+
+<p>
+This assumption breaks because the mask does not enforce the actual array bounds:
+</p>
+
+<pre>
+FOTG210_MAX_NUM_EP = 5
+</pre>
+
+<p>
+No secondary validation exists before dereferencing <code>fotg210->ep[]</code>.
+</p>
+</div>
+
+<div class="section">
+<h2>Fix</h2>
+
+<pre>
+u8 epnum = ctrl->wIndex & USB_ENDPOINT_NUMBER_MASK;
+
+if (epnum >= FOTG210_MAX_NUM_EP) {
+    fotg210_request_error(fotg210);
+    return;
+}
+
+struct fotg210_ep *ep = fotg210->ep[epnum];
+</pre>
+
+<p>
+All endpoint accesses must validate the derived index before dereferencing.
+</p>
+</div>
+
+<section class="section">
+
+<h2>Upstream Patch & Timeline</h2>
+
+<p>
+The vulnerability was reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
+</p>
+
+<p>
+<strong>LKML Activity & Patch History:</strong>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+target="_blank"
+rel="noopener noreferrer">
+lore.kernel.org/all/?q=Pavitra+Jha
+</a>
+</p>
+
+</section>
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+
+</article>
+
+</div>
+
+</body>
+</html>

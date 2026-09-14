@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>wfx Use-After-Free via Uncancelled Work Items</title>
+<link rel="stylesheet" href="../style.css" />
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for “research blog” feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>Silicon Labs wfx wireless driver: Invalid post-lifetime object access via uncancelled work items</h1>
+
+<p class="meta">
+Silicon Labs wfx wireless driver | Linux kernel | Race condition / Use-After-Free in interface teardown
+</p>
+</header>
+
+<section class="section">
+
+<h2>Summary</h2>
+
+<p>
+An invalid post-lifetime object access vulnerability exists in the <code>drivers/net/wireless/silabs/wfx/</code> driver. The flaw is caused by asynchronous work items embedded within <code>struct wfx_vif</code> that remain active and queued after mac80211 zero-initializes the instance memory sequence following an interface removal call.
+</p>
+
+<p>
+When the uncancelled work queues execute against the cleared driver private region, fields inside the structure are dereferenced as null or corrupt pointers, leading to arbitrary memory accesses or kernel panic conditions.
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Vulnerability details</h2>
+
+<p>
+During interface teardown, <code>wfx_remove_interface()</code> clears out specific async handlers but omits others. Specifically, <code>beacon_loss_work</code> is properly synchronized, while <code>update_tim_work</code> and <code>tx_policy_upload_work</code> are ignored:
+</p>
+
+<pre>
+cancel_delayed_work_sync(&wvif->beacon_loss_work); /* Only item canceled */
+wdev->vif[wvif->id] = NULL;
+mutex_unlock(&wdev->conf_mutex);
+</pre>
+
+<p>
+Once <code>drv_remove_interface()</code> executes and returns back to the subsystem stack, mac80211 directly forces a <code>memset</code> block to clear the underlying private block structure tracking the virtual interface data (<code>net/mac80211/iface.c</code>):
+</p>
+
+<pre>
+drv_remove_interface(local, sdata);
+memset(sdata->vif.drv_priv, 0, local->hw.vif_data_size); /* wvif memory zeroed out */
+</pre>
+
+<p>
+Any pending or execution-deferred work item firing past this absolute memory clearance point processes zeroed <code>wvif</code> fields natively.
+</p>
+
+</section>
+
+<section class="section">
+
+<h2>Root cause</h2>
+
+<p>
+The driver lacks complete serialization barriers during its teardown lifecycle path. A quick inspection confirms that no synchronization hooks exist across the codebase to capture these specific asynchronous elements before clearing the interface state context:
+</p>
+
+<pre>
+grep -rn "cancel_work_sync.*update_tim\|cancel_work_sync.*tx_policy" drivers/net/wireless/silabs/wfx/
+(no matches)
+</pre>
+
+<p>
+The uncancelled callbacks are broken down below:
+</p>
+
+<h3>update_tim_work (sta.c)</h3>
+<pre>
+static void wfx_update_tim_work(struct work_struct *work)
+{
+    struct wfx_vif *wvif = container_of(work, struct wfx_vif, update_tim_work);
+    wfx_update_tim(wvif); /* Operates on zeroed memory with no mutex alignment */
+}
+</pre>
+
+<h3>tx_policy_upload_work (data_tx.c)</h3>
+<p>
+The execution handler unrolls structures under a local per-vif spinlock block (<code>cache->lock</code>), processing memory references directly out of the zeroed object allocation frame.
+</p>
+
+</section>
+
+<section class="section">
+<h2>Race window</h2>
+<p>
+The race condition triggers inside the core wireless state transition machine via <code>ieee80211_do_stop()</code>:
+</p>
+<pre>
+sta_info_flush()
+  -> __sta_info_destroy_part2()
+    -> __sta_info_recalc_tim(sta, true)  /* sta->dead evaluation evaluates to false */
+      -> drv_set_tim()
+        -> wfx_set_tim()
+          -> schedule_work(&wvif->update_tim_work)  /* Asynchronous work item queued here */
+
+[wiphy_work_cancel() clears mac80211 sub-allocations exclusively]
+
+drv_remove_interface()
+memset(sdata->vif.drv_priv, 0, ...)  /* Private driver context zeroed out immediately */
+
+[Asynchronous workqueue execution wakes up -> dereferences nullified memory space]
+</pre>
+</section>
+<section class="section">
+<h2>Impact</h2>
+<ul>
+<li>Kernel panic state due to null-pointer/invalid address dereferencing</li>
+<li>Use-After-Free (UAF) access window over recycled structures</li>
+<li>Race vulnerability exploitation within interface hot-unplug paths</li>
+</ul>
+</section>
+<section class="section">
+<h2>Fix</h2>
+<p>
+Introduce explicit cancellation steps for the omitted work structures inside the teardown pipeline sequence before state invalidation:
+</p>
+<pre>
+  cancel_delayed_work_sync(&wvif->beacon_loss_work);
++ cancel_work_sync(&wvif->update_tim_work);
++ cancel_work_sync(&wvif->tx_policy_upload_work);
+  wdev->vif[wvif->id] = NULL;
+</pre>
+</section>
+<section class="section">
+<h2>Affected versions</h2>
+<p>
+Identified in mainline development trees (Linux 7.0-rc7 architecture) and upstream distributions matching <code>CONFIG_WFX=y/m</code> settings without independent patch implementations as of May 2026.
+</p>
+</section>
+<section class="section">
+<h2>Notes</h2>
+<p>
+This structural vulnerability represents a classic teardown sequencing bug frequently found across multi-layered wireless driver designs where global subsystem data layers clear resources before driver-managed background worker tasks have finished processing.
+</p>
+</section>
+<section class="section">
+
+<h2>Upstream Patch & Timeline</h2>
+
+<p>
+The vulnerability was reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
+</p>
+
+<p>
+<strong>LKML Activity & Patch History:</strong>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+target="_blank"
+rel="noopener noreferrer">
+lore.kernel.org/all/?q=Pavitra+Jha
+</a>
+</p>
+
+</section>
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+</div>
+</body
+</html>

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MediaTek t7xx WWAN Driver Out-of-Bounds Read</title>
+<link rel="stylesheet" href="../style.css" />
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for “research blog” feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>MediaTek t7xx WWAN Driver: Out-of-Bounds Read via Unchecked port_count (CVE-2026-43495)</h1>
+<p class="meta">
+MediaTek t7xx WWAN Driver | Linux Kernel Subsystem | Heap Memory Safety | Vulnerability Write-up
+</p>
+</header>
+
+<section class="section">
+    <h2>1. Summary</h2>
+    <p>
+        An out-of-bounds (OOB) read vulnerability exists within the MediaTek <code>t7xx</code> WWAN driver implementation (specifically inside <code>t7xx_port_enum_msg_handler()</code>). The flaw is driven by an unchecked <code>port_count</code> field read directly from a modem-supplied control message. 
+    </p>
+    <p>
+        This value acts as an loop bound terminator to walk a flexible array member. Because the driver fails to validate that the backing buffer size matches or exceeds the space required by the declared <code>port_count</code>, a malformed control payload can force the loop to read significantly past the allocation boundary into adjacent kernel slab memory.
+    </p>
+</section>
+
+<section class="section">
+    <h2>2. Vulnerability Execution Paths</h2>
+    <p>
+        The vulnerability can be reached via two distinct logical pathways within the driver initialization and processing stack, depending on the current communication mode of the interface:
+    </p>
+
+    <h3>A. Primary Vector: DPMAIF RX / SKB Path</h3>
+    <pre>
+drivers/net/wwan/t7xx/t7xx_hif_dpmaif_rx.c
+  - Modem firmware writes payload directly into host RAM via DPMAIF DMA engine over PCIe.
+  - No verification of payload content or data architecture happens at this layer.
+      |
+      v
+drivers/net/wwan/t7xx/t7xx_port_proxy.c : t7xx_port_enqueue_skb()
+  - Socket Buffer (SKB) is enqueued into port->rx_skb_list. 
+  - The only constraint check evaluated is queue depth threshold; SKB contents are ignored.
+      |
+      v
+drivers/net/wwan/t7xx/t7xx_port_ctrl_msg.c : port_kthread_handler()
+  - Dequeues the pending SKB via __skb_dequeue() and passes it blindly to control_msg_handler().
+      |
+      v
+drivers/net/wwan/t7xx/t7xx_port_ctrl_msg.c : control_msg_handler()
+  - Casts skb->data directly to a struct ctrl_msg_header*. 
+  - Matches the CTL_ID_PORT_ENUM case and routes execution directly into the sink function
+    t7xx_port_enum_msg_handler() without evaluating skb->len boundaries.
+    </pre>
+
+    <h3>B. Secondary Vector: CLDMA Handshake Path</h3>
+    <pre>
+drivers/net/wwan/t7xx/t7xx_port_ctrl_msg.c : control_msg_handler()
+      |
+      v
+drivers/net/wwan/t7xx/t7xx_state_monitor.c : t7xx_fsm_append_event()
+      |
+      v
+drivers/net/wwan/t7xx/t7xx_modem_ops.c : t7xx_parse_host_rt_data()
+  - The variable rt_feature->data_len is extracted from raw modem-controlled data and drives 
+    offset memory arithmetic. 
+  - The calculated offset pointer is passed into t7xx_port_enum_msg_handler() with no accompanying
+    length tracking parameter, leaving the sink with no baseline constraint data.
+    </pre>
+</section>
+
+<section class="section">
+    <h2>3. Vulnerability Description & Mechanics</h2>
+    <p>
+        The communication protocol uses the following structure definition to parse incoming port enumeration messages:
+    </p>
+<pre>
+struct port_msg {
+    __le32 head_pattern;   // Offset 0x00 [4 Bytes]
+    __le32 info;           // Offset 0x04 [4 Bytes] -> contains port_count in bits [15:0]
+    __le32 tail_pattern;   // Offset 0x08 [4 Bytes]
+    __le32 data[];         // Offset 0x0C [Flexible Array Member - 0 Byte base size contribution]
+};
+
+// Base structure allocation footprint: 12 Bytes
+</pre>
+    <p>
+        The driver parses the <code>port_count</code> field out of the <code>info</code> register using bitmask extraction:
+    </p>
+<pre>
+port_count = FIELD_GET(PORT_MSG_PRT_CNT, le32_to_cpu(port_msg->info));
+// PORT_MSG_PRT_CNT = GENMASK(15, 0) -> Maximum value = 65535
+</pre>
+    <p>
+        Following this assignment, the driver immediately drops into an evaluation loop to register or modify runtime channel configurations:
+    </p>
+<pre>
+for (i = 0; i &lt; port_count; i++) {
+    u32 port_info = le32_to_cpu(port_msg->data[i]);  /* SINK: Out-of-Bounds Read */
+    ...
+}
+</pre>
+    <p>
+        Pointer arithmetic for the assignment translates exactly to:
+        <br>
+        <code>*(u32*)( (uintptr_t)port_msg + 12 + (i * 4) )</code>
+    </p>
+    <p>
+        A structural message describing $N$ active channels requires a byte allocation footprint equal to $12 + (N \times 4)$. However, if a compromised or malicious modem transmits a message containing a base size of 12 bytes but specifies a <code>port_count</code> value of <code>65535</code>, the loop executes up to 65535 times. This causes the kernel to read up to <code>~262 KB</code> of memory data extending past the legitimate end of the allocated buffer.
+    </p>
+</section>
+
+<section class="section">
+    <h2>4. Source Code Analysis</h2>
+    <p>
+        The complete vulnerable function implementation from the mainline kernel tree is shown below:
+    </p>
+<pre>
+int t7xx_port_enum_msg_handler(struct t7xx_modem *md, void *msg)
+{
+    struct device *dev = &md->t7xx_dev->pdev->dev;
+    unsigned int version, port_count, i;
+    struct port_msg *port_msg = msg;
+
+    /* EXISTING VALIDATION STEP */
+    version = FIELD_GET(PORT_MSG_VERSION, le32_to_cpu(port_msg->info));
+    if (version != PORT_ENUM_VER ||
+        le32_to_cpu(port_msg->head_pattern) != PORT_ENUM_HEAD_PATTERN ||
+        le32_to_cpu(port_msg->tail_pattern) != PORT_ENUM_TAIL_PATTERN) {
+        dev_err(dev, "Invalid port control message %x:%x:%x\n",
+                version, le32_to_cpu(port_msg->head_pattern),
+                le32_to_cpu(port_msg->tail_pattern));
+        return -EFAULT;
+    }
+
+    port_count = FIELD_GET(PORT_MSG_PRT_CNT, le32_to_cpu(port_msg->info));
+
+    for (i = 0; i &lt; port_count; i++) {
+        u32 port_info = le32_to_cpu(port_msg->data[i]); // &lt;- Flawed OOB Read Location
+        unsigned int ch_id;
+        bool en_flag;
+
+        ch_id   = FIELD_GET(PORT_INFO_CH_ID, port_info);
+        en_flag = port_info &amp; PORT_INFO_ENFLG;
+        if (t7xx_port_proxy_chl_enable_disable(md->port_prox, ch_id, en_flag))
+            dev_dbg(dev, "Port:%x not found\n", ch_id);
+    }
+
+    return 0;
+}
+</pre>
+    <h3>Why Preexisting Validation Checks Fail</h3>
+    <p>
+        The verification routine checks <code>version</code>, <code>head_pattern</code>, and <code>tail_pattern</code>. However, because these constants are part of the DMA payload provided by the peripheral, an attacker can simply set them to their expected values:
+    </p>
+    <ul>
+        <li><code>head_pattern = PORT_ENUM_HEAD_PATTERN</code></li>
+        <li><code>info = (PORT_ENUM_VER &lt;&lt; 16) | 65535</code></li>
+        <li><code>tail_pattern = PORT_ENUM_TAIL_PATTERN</code></li>
+    </ul>
+    <p>
+        This bypasses the existing integrity checks entirely. The logic assumes a cooperative hardware partner and fails to enforce spatial buffer limits.
+    </p>
+</section>
+
+<section class="section">
+    <h2>5. KASAN Log & Triage Data</h2>
+    <p>
+        Vulnerability verification was performed using a test harness executing within a QEMU instance with Kernel Address Sanitizer (KASAN) active. The test allocated a strict 12-byte block matching the raw structure base and assigned a target count of <code>65535</code>.
+    </p>
+<pre>
+BUG: KASAN: slab-out-of-bounds in t7xx_port_enum_msg_handler+0x1ae/0x1c0
+Read of size 4 at addr ffff888008654d8c by task insmod/59
+
+Call Trace:
+ [&lt;ffffffff81b83d8d&gt;] dump_stack_lvl+0x4d/0x70
+ [&lt;ffffffff815ea710&gt;] print_report+0x170/0x4f3
+ [&lt;ffffffff815eaad2&gt;] kasan_report+0xda/0x110
+ [&lt;ffffffff83566ac2&gt;] t7xx_port_enum_msg_handler+0x1ae/0x1c0
+ [&lt;ffffffffa000215c&gt;] t7xx_oob_harness_init+0x15c/0xff0 [t7xx_oob_harness]
+ ...
+ [&lt;ffffffff8100219a&gt;] do_one_initcall+0x9a/0x3a0
+
+Allocated by task 59:
+ [&lt;ffffffff815e7230&gt;] __kasan_kmalloc+0x7f/0x90
+ [&lt;ffffffffa0002075&gt;] t7xx_oob_harness_init+0x75/0xff0 [t7xx_oob_harness]
+
+The buggy address belongs to the object at ffff888008654d80
+ which belongs to the cache kmalloc-16 of size 16
+The buggy address is located 0 bytes to the right of
+ allocated 12-byte region [ffff888008654d80, ffff888008654d8c)
+
+Memory state around the buggy address:
+ ffff888008654d00: fc fc fc fc fc fc fc fc fc fc fc fc fc fc fc fc
+&gt;ffff888008654d80: 00 04 fc fc 00 04 fc fc 00 04 fc fc 00 04 fc fc
+                       ^
+ ffff888008654e00: 00 07 fc fc 00 04 fc fc 00 04 fc fc 00 06 fc fc
+</pre>
+    <h3>Anatomy of the Exploit Sink</h3>
+    <p>
+        The out-of-bounds address (<code>ffff888008654d8c</code>) corresponds exactly to <code>Allocation Base (ffff888008654d80) + 12 Bytes</code>. This marks the initial array element slot <code>data[0]</code>. 
+    </p>
+    <p>
+        When <code>kasan_multi_shot</code> testing is continued beyond the initial log entry, the kernel encounters a secondary General Protection Fault (GPF):
+    </p>
+<pre>
+Oops: general protection fault, probably for non-canonical address 0xdffffc0000000022
+KASAN: null-ptr-deref in range [0x0000000000000110-0x0000000000000117]
+RIP: 0010:t7xx_port_enum_msg_handler+0x121/0x1c0
+</pre>
+    <p>
+        This occurs because the arbitrary <code>u32</code> block extracted out-of-bounds is routed into <code>t7xx_port_proxy_chl_enable_disable()</code> as the <code>ch_id</code> variable. The driver uses this value to calculate active pointer targets, allowing an attacker to inject out-of-bounds data into driver control flows and channel management lookups.
+    </p>
+</section>
+
+<section class="section">
+    <h2>6. Threat Modeling & Impact Assessment</h2>
+    <ul>
+        <li>
+            <strong>Primary Primitive:</strong> Linear heap out-of-bounds read up to <code>~262 KB</code> across kernel slab caches. This allows exposure of adjacent crypto keys, tracking hashes, or kernel structure pointers.
+        </li>
+        <li>
+            <strong>Secondary Primitive:</strong> Control flow and configuration state injection. Unsanitized data read from adjacent memory caches alters driver state variables, causing channel enabling/disabling loops to operate on untrusted IDs.
+        </li>
+        <li>
+            <strong>Attack Vector:</strong> Requires control of the baseband modem processor (e.g., via a remote over-the-air base station exploit) or an active hardware attack vector. The <code>t7xx</code> family interacts directly with high-end corporate laptop components such as the Intel 5G Solution 5000 series cellular systems, turning this driver bug into an attractive cross-boundary pivot into the host operating system kernel.
+        </li>
+    </ul>
+</section>
+
+<section class="section">
+    <h2>7. Remediation</h2>
+    <p>
+        Fixing this bug requires passing the actual packet allocation size down to the verification routine and computing required structural space using overflows-safe calculation wrappers like <code>struct_size()</code>.
+    </p>
+
+    <h3>A. Updated Handler Implementation</h3>
+<pre>
+/* Accept explicit message length parameter */
+int t7xx_port_enum_msg_handler(struct t7xx_modem *md, void *msg, size_t msg_len)
+{
+    struct device *dev = &amp;md->t7xx_dev->pdev->dev;
+    unsigned int version, port_count, i;
+    struct port_msg *port_msg = msg;
+
+    /* Check minimal physical baseline constraint first */
+    if (msg_len &lt; sizeof(struct port_msg))
+        return -EINVAL;
+
+    version = FIELD_GET(PORT_MSG_VERSION, le32_to_cpu(port_msg->info));
+    if (version != PORT_ENUM_VER ||
+        le32_to_cpu(port_msg->head_pattern) != PORT_ENUM_HEAD_PATTERN ||
+        le32_to_cpu(port_msg->tail_pattern) != PORT_ENUM_TAIL_PATTERN) {
+        return -EFAULT;
+    }
+
+    port_count = FIELD_GET(PORT_MSG_PRT_CNT, le32_to_cpu(port_msg->info));
+
+    /* Defense in depth: Check against maximum possible logical channels */
+    if (port_count &gt; T7XX_MAX_PORTS) {
+        dev_err(dev, "Excessive port count %u from modem\n", port_count);
+        return -EINVAL;
+    }
+
+    /* Spatial validation check using overflow-safe size tracking macro */
+    if (msg_len &lt; struct_size(port_msg, data, port_count)) {
+        dev_err(dev, "Port enum msg too short: need %zu, have %zu\n",
+                struct_size(port_msg, data, port_count), msg_len);
+        return -EINVAL;
+    }
+
+    for (i = 0; i &lt; port_count; i++) {
+        u32 port_info = le32_to_cpu(port_msg->data[i]);
+        unsigned int ch_id;
+        bool en_flag;
+
+        ch_id   = FIELD_GET(PORT_INFO_CH_ID, port_info);
+        en_flag = port_info &amp; PORT_INFO_ENFLG;
+        if (t7xx_port_proxy_chl_enable_disable(md->port_prox, ch_id, en_flag))
+            dev_dbg(dev, "Port:%x not found\n", ch_id);
+    }
+
+    return 0;
+}
+</pre>
+
+    <h3>B. Required Call-Site Modifications</h3>
+    <p>
+        The calling routines must pass buffer tracking size attributes explicitly:
+    </p>
+<pre>
+/* DPMAIF Path: Pass SKB buffer size track */
+ret = t7xx_port_enum_msg_handler(ctl->md, (struct port_msg *)skb->data, skb->len);
+
+/* Handshake Path: Pass delta boundary offset */
+t7xx_port_enum_msg_handler(ctl->md, rt_feature->data, data_length - offset);
+</pre>
+</section>
+
+<section class="section">
+    <h2>8. Affected Configurations</h2>
+    <ul>
+        <li><strong>Vulnerable Range:</strong> Linux Kernel <code>v5.18-rc1</code> through current mainline release (April 2026).</li>
+        <li><strong>Configuration Requirements:</strong> Subsystem compiled with active <code>CONFIG_MTK_T7XX</code> and <code>CONFIG_WWAN</code> attributes.</li>
+    </ul>
+</section>
+<section class="section">
+
+<h2>Upstream Patch & Timeline</h2>
+
+<p>
+The vulnerability was reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
+</p>
+
+<p>
+<strong>LKML Activity & Patch History:</strong>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+target="_blank"
+rel="noopener noreferrer">
+lore.kernel.org/all/?q=Pavitra+Jha
+</a>
+</p>
+
+</section>
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+
+
+</div>
+
+</body>
+</html>
+</pre>

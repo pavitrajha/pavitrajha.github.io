@@ -1,0 +1,3791 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Android's Nervous System - Binder IPC Booklet</title>
+    <style>
+        :root {
+            --paper: #ece8df;
+            --paper-dim: #ddd6c4;
+            --paper-dark: #d4cbb8;
+            --ink: #1c1914;
+            --ink-mid: #3a3429;
+            --ink-soft: #5a5040;
+            --rule: #c5bba6;
+            --accent: #9c3a1a;
+            --accent-dim: #c4714e;
+            --code-bg: #141210;
+            --code-text: #e8e4da;
+            --amber: #d9961f;
+            --green: #6e9b55;
+            --blue: #5a82b4;
+            --red: #c24a3a;
+            --mono: "IBM Plex Mono", "Courier New", monospace;
+            --serif: Georgia, "Times New Roman", serif;
+            --sans: "Segoe UI", Arial, sans-serif;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            font-size: 16px;
+        }
+
+        body {
+            background: #0a0907;
+            font-family: var(--serif);
+            color: var(--ink);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ========= NAV ========= */
+        .nav {
+            width: 256px;
+            min-width: 256px;
+            background: #141210;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #2a2520;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .nav::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .nav::-webkit-scrollbar-thumb {
+            background: #3a3429;
+        }
+
+        .nav-header {
+            padding: 28px 22px 22px;
+            border-bottom: 1px solid #2a2520;
+        }
+
+        .nav-eyebrow {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-bottom: 10px;
+        }
+
+        .nav-title {
+            font-family: var(--serif);
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--paper);
+            line-height: 1.35;
+        }
+
+        .nav-src {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            color: #5a5040;
+            margin-top: 12px;
+            line-height: 1.6;
+            border-top: 1px solid #2a2520;
+            padding-top: 10px;
+        }
+
+        .nav-src span {
+            color: var(--amber);
+        }
+
+        .nav-group {
+            font-family: var(--mono);
+            font-size: 9px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #4a4030;
+            padding: 18px 22px 6px;
+        }
+
+        .nav-btn {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 22px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+            transition: all 0.12s;
+            user-select: none;
+        }
+
+        .nav-btn:hover {
+            background: #1e1c18;
+            border-left-color: #4a4030;
+        }
+
+        .nav-btn.active {
+            background: #1e1c18;
+            border-left-color: var(--accent);
+        }
+
+        .nav-num {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--accent-dim);
+            padding-top: 2px;
+            min-width: 26px;
+        }
+
+        .nav-label {
+            font-family: var(--sans);
+            font-size: 12.5px;
+            color: #9a9080;
+            line-height: 1.4;
+        }
+
+        .nav-btn.active .nav-label {
+            color: var(--amber);
+        }
+
+        .nav-btn:hover .nav-label {
+            color: #c5bba6;
+        }
+
+        .nav-btn.dim {
+            opacity: 0.38;
+            pointer-events: none;
+        }
+
+        .nav-tag {
+            font-family: var(--mono);
+            font-size: 8.5px;
+            text-transform: uppercase;
+            border: 1px solid #3a3020;
+            color: var(--amber);
+            padding: 1px 5px;
+            margin-left: auto;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        /* ========= CONTENT ========= */
+.content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--paper);
+}
+
+        .content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .content::-webkit-scrollbar-track {
+            background: var(--paper-dim);
+        }
+
+        .content::-webkit-scrollbar-thumb {
+            background: var(--rule);
+        }
+
+        .page {
+            display: none;
+            max-width: 860px;
+            padding: 64px 72px 96px;
+            min-height: 100%;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        /* ========= COVER ========= */
+        .cover-wrap {
+            background: #141210;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 64px 72px 52px;
+        }
+
+        .cover-ey {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: var(--amber);
+        }
+
+        .cover-h1 {
+            font-family: var(--serif);
+            font-size: 58px;
+            font-weight: bold;
+            color: var(--paper);
+            line-height: 1.05;
+            margin-top: 22px;
+            max-width: 12ch;
+        }
+
+        .cover-sub {
+            font-family: var(--sans);
+            font-size: 15px;
+            color: #6a6050;
+            margin-top: 20px;
+            max-width: 50ch;
+            line-height: 1.65;
+        }
+
+        .cover-ascii {
+            font-family: var(--mono);
+            font-size: 13px;
+            color: #3a3429;
+            line-height: 2.0;
+            margin-top: 40px;
+        }
+
+        .cover-ascii .hl {
+            color: var(--amber);
+        }
+
+        .cover-foot {
+            border-top: 1px solid #2a2520;
+            padding-top: 18px;
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: #4a4030;
+        }
+
+        /* ========= TYPE ========= */
+        .kicker {
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 14px;
+        }
+
+        h1.pt {
+            font-family: var(--serif);
+            font-size: 36px;
+            font-weight: bold;
+            color: var(--ink);
+            line-height: 1.1;
+            margin-bottom: 10px;
+        }
+
+        .dek {
+            font-family: var(--sans);
+            font-size: 15px;
+            color: var(--ink-soft);
+            max-width: 64ch;
+            line-height: 1.65;
+            padding-bottom: 24px;
+            border-bottom: 2px solid var(--ink);
+            margin-bottom: 38px;
+        }
+
+        h2.sh {
+            font-family: var(--sans);
+            font-weight: 700;
+            font-size: 11.5px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin: 44px 0 16px;
+        }
+
+        h3.ssh {
+            font-family: var(--sans);
+            font-weight: 700;
+            font-size: 13px;
+            color: var(--ink-mid);
+            margin: 28px 0 10px;
+        }
+
+        p {
+            font-family: var(--serif);
+            font-size: 16.5px;
+            line-height: 1.76;
+            color: var(--ink);
+            max-width: 66ch;
+            margin-bottom: 16px;
+        }
+
+        p.lede {
+            font-size: 18.5px;
+            line-height: 1.65;
+        }
+
+        strong {
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        .pull {
+            border-left: 3px solid var(--accent);
+            padding: 6px 0 6px 22px;
+            font-family: var(--serif);
+            font-style: italic;
+            font-size: 20px;
+            color: var(--accent);
+            line-height: 1.5;
+            margin: 30px 0;
+            max-width: 54ch;
+        }
+
+        /* ========= CODE ========= */
+        .cb {
+            background: var(--code-bg);
+            border-radius: 2px;
+            margin: 18px 0 8px;
+            overflow: hidden;
+        }
+
+        .cb-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 9px 16px;
+            background: #1e1c18;
+            border-bottom: 1px solid #2a2520;
+        }
+
+        .cb-file {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--amber);
+        }
+
+        .cb-lines {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: #5a5040;
+        }
+
+        .cb pre {
+            margin: 0;
+            padding: 18px 20px;
+            font-family: var(--mono);
+            font-size: 12.5px;
+            line-height: 1.68;
+            color: var(--code-text);
+            overflow-x: auto;
+        }
+
+        .cm {
+            color: #5a5848;
+            font-style: italic;
+        }
+
+        .ck {
+            color: var(--amber);
+        }
+
+        .cs {
+            color: var(--green);
+        }
+
+        .ch {
+            color: #d08a5a;
+        }
+
+        .cr {
+            color: var(--red);
+        }
+
+        .cb-note {
+            font-family: var(--sans);
+            font-size: 13px;
+            color: var(--ink-soft);
+            background: var(--paper-dim);
+            border-left: 3px solid var(--accent);
+            padding: 12px 16px;
+            margin-bottom: 26px;
+            line-height: 1.6;
+            max-width: 66ch;
+        }
+
+        /* ========= DIAGRAMS ========= */
+        .diag {
+            background: var(--code-bg);
+            border-radius: 2px;
+            padding: 26px 30px;
+            margin: 18px 0 26px;
+        }
+
+        .diag-lbl {
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-bottom: 18px;
+        }
+
+        .flow {
+            display: flex;
+            flex-direction: column;
+            font-family: var(--mono);
+            font-size: 13.5px;
+        }
+
+        .fn {
+            background: #201e18;
+            border: 1px solid #38352a;
+            padding: 10px 16px;
+            border-radius: 2px;
+            color: var(--code-text);
+        }
+
+        .fn.hot {
+            border-color: var(--amber);
+            color: var(--amber);
+        }
+
+        .fn.danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .fn.safe {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        .fa {
+            text-align: center;
+            color: #4a4838;
+            padding: 4px 0;
+            font-size: 12px;
+        }
+
+        .fa.label {
+            font-family: var(--sans);
+            font-size: 11px;
+            color: #7a7060;
+            text-align: left;
+            padding-left: 40px;
+        }
+
+        .flow-row {
+            display: flex;
+            gap: 0;
+            align-items: center;
+            font-family: var(--mono);
+            font-size: 13px;
+        }
+
+        .flow-row .fn {
+            flex: 1;
+        }
+
+        .flow-row .fa-h {
+            color: #4a4838;
+            padding: 0 12px;
+        }
+
+        /* ========= STRUCT CARDS ========= */
+        .sg {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin: 18px 0 26px;
+        }
+
+        .sc {
+            background: var(--code-bg);
+            border: 1px solid #38352a;
+            border-left: 3px solid var(--amber);
+            padding: 16px 18px;
+        }
+
+        .sc-name {
+            font-family: var(--mono);
+            font-size: 14px;
+            color: var(--amber);
+            margin-bottom: 4px;
+        }
+
+        .sc-loc {
+            font-family: var(--mono);
+            font-size: 9.5px;
+            color: #5a5040;
+            margin-bottom: 10px;
+        }
+
+        .sc-desc {
+            font-family: var(--sans);
+            font-size: 12.5px;
+            color: #c0b8a8;
+            line-height: 1.55;
+            margin-bottom: 10px;
+        }
+
+        .sc-fields {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: #5a5848;
+            line-height: 1.8;
+        }
+
+        .sc-fields .sf {
+            color: #9a9080;
+        }
+
+        .sc-fields .sv {
+            color: var(--accent-dim);
+        }
+
+        /* ========= TABLE ========= */
+        table.bt {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0 28px;
+            font-family: var(--sans);
+            font-size: 13.5px;
+        }
+
+        table.bt th {
+            text-align: left;
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            border-bottom: 2px solid var(--ink);
+            padding: 9px 14px 9px 0;
+        }
+
+        table.bt td {
+            padding: 13px 14px 13px 0;
+            border-bottom: 1px solid var(--rule);
+            vertical-align: top;
+            line-height: 1.55;
+            color: var(--ink-mid);
+        }
+
+        table.bt td.mm {
+            font-family: var(--mono);
+            font-size: 12px;
+            color: var(--accent);
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        /* ========= ANNOTATIONS ========= */
+        .ann {
+            font-family: var(--mono);
+            font-size: 12px;
+            background: var(--paper-dark);
+            border: 1px solid var(--rule);
+            padding: 14px 18px;
+            margin: 0 0 24px;
+            max-width: 66ch;
+            line-height: 1.7;
+            color: var(--ink-soft);
+        }
+
+        .ann strong {
+            color: var(--accent);
+        }
+
+        .lrule {
+            background: var(--code-bg);
+            border-left: 3px solid var(--amber);
+            padding: 14px 18px;
+            margin: 16px 0 26px;
+            font-family: var(--mono);
+            font-size: 12px;
+            color: #8a8070;
+            line-height: 1.8;
+        }
+
+        .lrule .lk {
+            color: var(--amber);
+        }
+
+        .lrule .lv {
+            color: #9a9080;
+        }
+
+        /* ========= LISTS ========= */
+        ul.sl {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 24px;
+            max-width: 62ch;
+        }
+
+        ul.sl li {
+            font-family: var(--sans);
+            font-size: 14.5px;
+            padding: 10px 0 10px 28px;
+            border-bottom: 1px solid var(--rule);
+            position: relative;
+            color: var(--ink-mid);
+            line-height: 1.5;
+        }
+
+        ul.sl li:first-child {
+            border-top: 1px solid var(--rule);
+        }
+
+        ul.sl li::before {
+            content: "->";
+            position: absolute;
+            left: 0;
+            top: 12px;
+            color: var(--accent);
+            font-family: var(--mono);
+            font-size: 11px;
+        }
+
+        /* ========= CHIPS ========= */
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 9px;
+            margin: 8px 0 28px;
+        }
+
+        .chip {
+            font-family: var(--mono);
+            font-size: 11.5px;
+            border: 1px solid var(--ink-mid);
+            padding: 6px 13px;
+            color: var(--ink-mid);
+        }
+
+        .chip.danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        /* ========= PAGE NAV ========= */
+        .pnav {
+            margin-top: 60px;
+            padding-top: 22px;
+            border-top: 1px dashed var(--rule);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .pnav-text {
+            font-family: var(--serif);
+            font-style: italic;
+            font-size: 15px;
+            color: var(--ink-soft);
+            max-width: 50ch;
+        }
+
+        .pnav-btn {
+            font-family: var(--mono);
+            font-size: 10.5px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--paper);
+            background: var(--ink);
+            padding: 12px 20px;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .pnav-btn:hover {
+            background: var(--accent);
+        }
+
+        /* ========= LANDING CARDS ========= */
+        .lcg {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 13px;
+            margin-top: 8px;
+        }
+
+        .lc {
+            border: 1px solid var(--rule);
+            padding: 20px 22px;
+            cursor: pointer;
+            transition: border-color 0.12s, transform 0.1s;
+        }
+
+        .lc:hover {
+            border-color: var(--accent);
+            transform: translateX(3px);
+        }
+
+        .lc-n {
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .lc-name {
+            font-family: var(--serif);
+            font-weight: bold;
+            font-size: 17px;
+            color: var(--ink);
+            margin-bottom: 6px;
+        }
+
+        .lc-desc {
+            font-family: var(--sans);
+            font-size: 12px;
+            color: var(--ink-soft);
+            line-height: 1.55;
+        }
+
+        .lc.dim {
+            opacity: 0.45;
+            cursor: default;
+        }
+
+        .lc.dim:hover {
+            transform: none;
+            border-color: var(--rule);
+        }
+
+        @media (max-width: 860px) {
+            .nav {
+                display: none;
+            }
+
+            .page {
+                padding: 32px 22px 70px;
+            }
+
+            .sg,
+            .lcg {
+                grid-template-columns: 1fr;
+            }
+
+            h1.pt {
+                font-size: 28px;
+            }
+        }
+
+        .goal-box {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-top: 24px;
+        }
+
+        .goal {
+            padding: 18px;
+            border: 1px solid var(--rule);
+            background: #f5f2ea;
+        }
+
+        .flow-large {
+            font-family: var(--mono);
+            font-size: 18px;
+            line-height: 2.2;
+            text-align: center;
+            padding: 30px;
+            border: 1px solid var(--rule);
+            background: #f8f6f1;
+            margin: 24px 0;
+        }
+
+        .live-list {
+            margin-left: 24px;
+            line-height: 2;
+            font-size: 18px;
+        }
+
+        .summary {
+            margin-left: 24px;
+            line-height: 2;
+            font-size: 18px;
+        }
+
+        /* =======================================================
+   Speaker Page
+======================================================= */
+
+        .speaker-layout {
+
+            display: grid;
+
+            grid-template-columns: 1.7fr 320px;
+
+            gap: 48px;
+
+            align-items: start;
+
+            margin-top: 34px;
+
+        }
+
+        .speaker-photo img {
+
+            width: 100%;
+
+            display: block;
+
+            border: 1px solid var(--rule);
+
+        }
+
+        .speaker-divider {
+
+            height: 1px;
+
+            background: var(--rule);
+
+            margin: 42px 0;
+
+        }
+
+        .speaker-columns {
+
+            display: grid;
+
+            grid-template-columns: 1fr 1fr;
+
+            gap: 48px;
+
+        }
+
+        .speaker-list {
+
+            margin: 0;
+
+            padding-left: 18px;
+
+            line-height: 1.8;
+
+        }
+
+        .speaker-list.two-col {
+
+            columns: 2;
+
+            column-gap: 40px;
+
+        }
+
+        .speaker-contact {
+
+            font-size: 15px;
+
+            line-height: 1.9;
+
+        }
+
+        .speaker-contact a {
+
+            color: inherit;
+
+            text-decoration: none;
+
+            border-bottom: 1px dotted var(--rule);
+
+        }
+
+        .speaker-contact a:hover {
+
+            border-bottom: 1px solid currentColor;
+
+        }
+
+        .speaker-note {
+
+            margin-top: 24px;
+
+            font-style: italic;
+
+            color: var(--muted);
+
+        }
+
+        .mono-subtitle {
+
+            margin-top: -12px;
+
+            margin-bottom: 36px;
+
+            font-family: var(--mono);
+
+            font-size: 13px;
+
+            text-transform: uppercase;
+
+            letter-spacing: .08em;
+
+            color: var(--muted);
+
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- NAV -->
+    <nav class="nav">
+        <div class="nav-header">
+            <div class="nav-eyebrow">Field Booklet / Webinar</div>
+            <div class="nav-title">Android's Nervous System</div>
+            <div class="nav-src">
+                <span>drivers/android/binder.c</span><br>
+                6,642 lines cited directly
+            </div>
+        </div>
+
+        <div class="nav-group">Start</div>
+        <div class="nav-btn active" id="nb-cover" onclick="go('cover')">
+            <span class="nav-num">--</span>
+            <span class="nav-label">Cover</span>
+        </div>
+
+        <div class="nav-btn" id="nb-speaker" onclick="go('speaker')">
+            <span class="nav-num">--</span>
+            <span class="nav-label">About the Speaker</span>
+        </div>
+
+        <div class="nav-btn" id="nb-map" onclick="go('map')">
+            <span class="nav-num">--</span>
+            <span class="nav-label">Booklet Map</span>
+        </div>
+
+        <div class="nav-group">Section 01</div>
+        <div class="nav-btn" id="nb-s1" onclick="go('s1')"><span class="nav-num">01</span><span class="nav-label">Why
+                Binder Matters</span></div>
+
+        <div class="nav-group">Section 02 - Internals</div>
+        <div class="nav-btn" id="nb-s2a" onclick="go('s2a')"><span class="nav-num">02a</span><span
+                class="nav-label">Locking Model + Four Structs</span></div>
+        <div class="nav-btn" id="nb-s2b" onclick="go('s2b')"><span class="nav-num">02b</span><span
+                class="nav-label">binder_ioctl - Front Door</span></div>
+        <div class="nav-btn" id="nb-s2c" onclick="go('s2c')"><span class="nav-num">02c</span><span
+                class="nav-label">Walking a Transaction</span></div>
+        <div class="nav-btn" id="nb-s2d" onclick="go('s2d')"><span class="nav-num">02d</span><span
+                class="nav-label">Object Translation + FDs</span></div>
+
+        <div class="nav-group">Section 03 - Attack Surface</div>
+        <div class="nav-btn" id="nb-s3a" onclick="go('s3a')"><span class="nav-num">03a</span><span
+                class="nav-label">The Evolution of Binder Security</span></div>
+        <div class="nav-btn" id="nb-s3b" onclick="go('s3b')"><span class="nav-num">03b</span><span
+                class="nav-label">Major Turning Points in Binder Security</span></div>
+        <div class="nav-btn" id="nb-s3c" onclick="go('s3c')"><span class="nav-num">03c</span><span class="nav-label">Bug
+                Recurring Engineering Principles</span></div>
+        <div class="nav-group">
+
+            Section 04 - Fuzzing
+
+        </div>
+
+        <div class="nav-btn" id="nb-demo-intro" onclick="go('demo-intro')">
+
+            <span class="nav-num">
+
+                04
+
+            </span>
+
+            <span class="nav-label">
+
+                Why Fuzz Binder?
+
+            </span>
+
+        </div>
+
+        <div class="nav-btn" id="nb-demo1" onclick="go('demo1')">
+
+            <span class="nav-num">
+
+                04a
+
+            </span>
+
+            <span class="nav-label">
+
+                How Coverage-Guided Binder Fuzzing Works
+
+            </span>
+
+        </div>
+
+        <div class="nav-btn" id="nb-demo2" onclick="go('demo2')">
+
+            <span class="nav-num">
+
+                04b
+
+            </span>
+
+            <span class="nav-label">
+
+                Launch + Coverage Growth 
+
+            </span>
+
+        </div>
+
+<div class="nav-btn" id="nb-demo3" onclick="go('demo3')">
+    <span class="nav-num">
+        04c
+    </span>
+
+    <span class="nav-label">
+        Understanding Fuzzer Output
+    </span>
+</div>
+
+<div class="nav-btn" id="nb-findings" onclick="go('findings')">
+    <span class="nav-num">
+        04d
+    </span>
+
+    <span class="nav-label">
+        Research Findings
+    </span>
+</div>
+    </nav>
+        <!-- CONTENT -->
+        <div class="content" id="content">
+            <div class="page" id="page-introduction">
+
+                <div class="kicker">
+                    Introduction
+                </div>
+
+                <h1 class="pt">
+                    Welcome
+                </h1>
+
+                <p class="dek">
+
+                    Android's Binder driver sits at the center of almost every meaningful
+                    interaction between applications and the operating system.
+
+                    Every system service request,
+                    every permission-protected operation,
+                    and nearly every cross-process interaction ultimately relies on Binder.
+
+                    Because of that,
+                    Binder is simultaneously one of Android's most important architectural
+                    components and one of its most valuable security research targets.
+
+                </p>
+
+                <p>
+
+                    This booklet accompanies the webinar
+                    <b>"Android's Nervous System: Binder IPC Internals and Fuzzing for New Vulnerabilities"</b>.
+
+                    Rather than presenting Binder as a collection of kernel structures,
+                    the goal is to build an intuitive understanding of how the subsystem
+                    actually operates,
+                    how security researchers reason about its implementation,
+                    and how that understanding naturally leads into effective fuzzing.
+
+                </p>
+
+                <p>
+
+                    The material assumes basic familiarity with Linux,
+                    C or C++,
+                    and general operating system concepts,
+                    but no prior experience with Android internals is required.
+
+                    Whether your objective is vulnerability research,
+                    kernel development,
+                    or simply understanding one of Android's most critical subsystems,
+                    this booklet is intended to serve as both a learning resource and a future reference.
+
+                </p>
+
+                <div class="pull">
+
+                    This booklet is designed to be read sequentially.
+
+                    Each chapter builds upon the previous one,
+                    progressing from Binder architecture,
+                    to transaction processing,
+                    to attack surface analysis,
+                    and finally to practical Binder fuzzing demonstrations.
+
+                    <hr class="rule">
+
+                    <div class="small-muted">
+
+                        Prepared for the webinar
+
+                        <b>Android's Nervous System: Binder IPC Internals and Fuzzing for New Vulnerabilities</b>
+
+                        Version 1.0
+
+                    </div>
+                </div>
+            </div><!-- end page-introduction -->
+            <!-- COVER -->
+            <div class="page active" id="page-cover">
+                    <div class="cover-wrap">
+                        <div>
+                            <div class="cover-ey">Field Booklet / Webinar Edition / 2026</div>
+                            <h1 class="cover-h1">Android's Nervous System</h1>
+                            <p class="cover-sub">Binder IPC internals and fuzzing for new vulnerabilities. Every diagram
+                                in this booklet annotates real functions from the kernel driver source - not a textbook,
+                                not documentation, the actual code running on the device.</p>
+                            <div class="cover-ascii">
+                                App Process (unprivileged sandbox)<br>
+                                |<br>
+                                Android Framework<br>
+                                |<br>
+                                System Services (AMS, PMS, CameraService...)<br>
+                                |<br>
+                                <span class="hl">Binder Driver &lt;-- every cross-process call lands here</span><br>
+                                |<br>
+                                Linux Kernel
+                            </div>
+                        </div>
+                        <div class="cover-foot">
+                            <span>Source: drivers/android/binder.c (6,642 lines)</span>
+                            <span>Sections 01 through 03 - Internals and Attack Surface</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- ========================================================= -->
+                <!-- ABOUT THE SPEAKER -->
+                <!-- Insert immediately after page-cover -->
+                <!-- ========================================================= -->
+
+                <div class="page" id="page-speaker">
+
+                    <div class="kicker">
+                        About the Speaker
+                    </div>
+
+                    <h1 class="pt">
+                        Pavitra Jha
+                    </h1>
+
+                    <div class="mono-subtitle">
+                        Offensive Security Researcher · Browser Security · Android · Linux Kernel
+                    </div>
+
+                    <div class="speaker-layout">
+
+                        <!-- LEFT -->
+
+                        <div>
+
+                            <h2 class="sh">
+                                Biography
+                            </h2>
+
+                            <p class="dek">
+
+                                Active in offensive security research since the age of nine,
+                                with work centered around architecture-level vulnerability
+                                discovery, Linux kernel internals, exploit development,
+                                browser security, Android internals,
+                                and large-scale source code auditing.
+
+                            </p>
+
+                            <p>
+
+                                Research focuses on exploitability-driven vulnerability
+                                discovery across browser engines, Binder IPC,
+                                kernel drivers, execution engines,
+                                memory corruption, sandbox boundaries,
+                                and modern operating system attack surfaces.
+
+                            </p>
+
+                            <p class="speaker-note">
+
+                                This webinar is being delivered at the age of sixteen.
+
+                            </p>
+
+                        </div>
+
+                        <!-- RIGHT -->
+
+                        <div class="speaker-photo">
+
+                            <img src="../Profile.jpg" alt="Pavitra Jha">
+
+                        </div>
+
+                    </div>
+
+                    <div class="speaker-divider"></div>
+
+                    <div class="speaker-columns">
+
+                        <div>
+
+                            <h2 class="sh">
+                                Selected Public Record
+                            </h2>
+
+                            <ul class="speaker-list">
+
+                                <li>Linux kernel security contributions and upstream work</li>
+
+                                <li>Hall of Fame acknowledgments from Google, Oracle, NASA, Philips and MoonPay</li>
+
+                                <li>Indian Book of Records - Youngest Ethical Hacker in India</li>
+
+                                <li>Speaker at multiple security conferences</li>
+
+                                <li>Nullcon Goa 2023 Scholarship Recipient</li>
+
+                                <li>Google Top 100 Bug Hunters (2022)</li>
+
+                            </ul>
+
+                        </div>
+
+                        <div>
+
+                            <h2 class="sh">
+                                Research Areas
+                            </h2>
+
+                            <ul class="speaker-list two-col">
+
+                                <li>Browser Security</li>
+
+                                <li>Android Security</li>
+
+                                <li>Binder IPC</li>
+
+                                <li>Linux Kernel</li>
+
+                                <li>Kernel Drivers</li>
+
+                                <li>Memory Corruption</li>
+
+                                <li>Structured Fuzzing</li>
+
+                                <li>Exploit Development</li>
+
+                                <li>Reverse Engineering</li>
+
+                                <li>Source Code Review</li>
+
+                            </ul>
+
+                        </div>
+
+                    </div>
+
+                    <div class="speaker-divider"></div>
+
+                    <div class="speaker-contact">
+
+                        <strong>Contact</strong>
+
+                        <br><br>
+
+                        Email:
+                        <a href="mailto:jhapavitra98@gmail.com">
+                            jhapavitra98@gmail.com
+                        </a>
+
+                        <br>
+
+                        LinkedIn:
+                        <a href="https://www.linkedin.com/in/cybersherlock" target="_blank" rel="noopener">
+
+                            linkedin.com/in/cybersherlock
+
+                        </a>
+                        <br>
+                        Portfolio:
+                        <a herf="https://pavitrajha.github.io/" target="_blank" rel="noopener">
+                            pavitrajha.github.io
+                        </a>
+
+                    </div>
+
+                    <div class="pull">
+
+                        <strong>Session Goal</strong>
+
+                        <br><br>
+
+                        Build an accurate mental model of Android Binder,
+                        understand why it represents one of the largest attack
+                        surfaces inside the Android ecosystem,
+                        and demonstrate how modern coverage-guided fuzzing
+                        can be applied to explore that attack surface.
+
+                    </div>
+
+                </div>
+                <!-- MAP -->
+<div class="page" id="page-map">
+    <div class="kicker">Booklet Map</div>
+    <p class="dek">
+        This booklet is the companion reference for the webinar. 
+        The first half explores Binder architecture and attack surface, 
+        while the second half demonstrates practical fuzzing workflows.
+    </p>
+
+    <div class="lcg">
+        <div class="lc" onclick="go('s1')">
+            <div class="lc-n">Section 01</div>
+            <div class="lc-name">Why Binder Matters</div>
+            <div class="lc-desc">The chokepoint argument. Six app actions traced to a single kernel driver.</div>
+        </div>
+
+        <div class="lc" onclick="go('s2a')">
+            <div class="lc-n">Section 02a</div>
+            <div class="lc-name">Locking Model + Four Structs</div>
+            <div class="lc-desc">Verbatim analysis of lines 8-38 and core structural init functions.</div>
+        </div>
+        <div class="lc" onclick="go('s2b')">
+            <div class="lc-n">Section 02b</div>
+            <div class="lc-name">binder_ioctl - Front Door</div>
+            <div class="lc-desc">Analysis of the line 5423 switch statement and primary fuzzer targets.</div>
+        </div>
+        <div class="lc" onclick="go('s2c')">
+            <div class="lc-n">Section 02c</div>
+            <div class="lc-name">Walking a Transaction</div>
+            <div class="lc-desc">Tracing binder_transaction() from line 2905 and target resolution.</div>
+        </div>
+        <div class="lc" onclick="go('s2d')">
+            <div class="lc-n">Section 02d</div>
+            <div class="lc-name">Object Translation + FDs</div>
+            <div class="lc-desc">Deferred fixup patterns and lifetime management in binder_translate_fd.</div>
+        </div>
+
+        <div class="lc" onclick="go('s3a')">
+            <div class="lc-n">Section 03a</div>
+            <div class="lc-name">Evolution of Binder Security</div>
+            <div class="lc-desc">Mapping driver, framework, and vendor layers to entry points.</div>
+        </div>
+        <div class="lc" onclick="go('s3b')">
+            <div class="lc-n">Section 03b</div>
+            <div class="lc-name">Major Turning Points</div>
+            <div class="lc-desc">Teardown/lifetime bugs and the unlock/relock iteration pattern.</div>
+        </div>
+        <div class="lc" onclick="go('s3c')">
+            <div class="lc-n">Section 03c</div>
+            <div class="lc-name">Bug Recurring Principles</div>
+            <div class="lc-desc">Mapping UAF, race conditions, and type confusion to source.</div>
+        </div>
+
+        <div class="lc" onclick="go('demo-intro')">
+            <div class="lc-n">Section 04</div>
+            <div class="lc-name">Why Fuzz Binder?</div>
+            <div class="lc-desc">Foundations of the fuzzing workflow.</div>
+        </div>
+        <div class="lc" onclick="go('demo1')">
+            <div class="lc-n">Section 04a</div>
+            <div class="lc-name">Coverage-Guided Fuzzing</div>
+            <div class="lc-desc">How the fuzzer traverses Binder internals.</div>
+        </div>
+        <div class="lc" onclick="go('demo2')">
+            <div class="lc-n">Section 04b</div>
+            <div class="lc-name">Launch + Coverage Growth</div>
+            <div class="lc-desc">Real-time observation of corpus growth.</div>
+        </div>
+        <div class="lc" onclick="go('demo3')">
+            <div class="lc-n">Section 04c</div>
+            <div class="lc-name">Understanding Fuzzer Output</div>
+            <div class="lc-desc">Interpreting crash logs and feedback loops.</div>
+        </div>
+        <div class="lc" onclick="go('findings')">
+            <div class="lc-n">Section 04d</div>
+            <div class="lc-name">Research Findings</div>
+            <div class="lc-desc">Summary of discovered vulnerabilities.</div>
+        </div>
+    </div>
+</div>
+            <!-- S1: WHY BINDER MATTERS -->
+            <div class="page" id="page-s1">
+                <div class="kicker">Section 01 / 0:00 to 0:10</div>
+                <h1 class="pt">Why Binder Matters</h1>
+                <p class="dek">No internals yet. The only goal for the first ten minutes is to answer the question an
+                    audience member is silently asking: why spend two hours on this one piece of code when there are
+                    hundreds of kernel drivers?</p>
+
+                <h2 class="sh">The fundamental argument</h2>
+                <p class="lede">Every networked system has chokepoints - narrow places where all traffic passes through
+                    regardless of where it came from or where it's going. The security value of a chokepoint is not just
+                    that you can monitor it. It's that a bug there affects everything that crosses it.</p>
+                <p>Binder is Android's chokepoint. It is not one service or one app - it is the mechanism that makes
+                    services and apps possible in the first place. The Android design decision to use a custom kernel
+                    IPC driver rather than standard POSIX sockets or System V IPC was intentional: they needed something
+                    that could enforce process identity, carry object references across process boundaries, and do it
+                    with a single copy rather than the double-copy that standard IPC requires. The result is binder.c -
+                    a 6,642 line kernel driver that has been running on every Android device since 2008.</p>
+
+                <h2 class="sh">Six actions, one driver</h2>
+                <p>These are not edge cases. These are things a user does within the first thirty seconds of picking up
+                    their phone.</p>
+
+                <div class="diag">
+                    <div class="diag-lbl">What "open the camera" actually calls</div>
+                    <div class="flow">
+                        <div class="fn">Camera App - calls CameraManager.openCamera()</div>
+                        <div class="fa">| (Java API call, eventually reaches native)</div>
+                        <div class="fn">CameraService - system_server process, different UID</div>
+                        <div class="fa">| (cross-process call required here)</div>
+                        <div class="fn hot">Binder transaction - driver copies the request, translates object refs</div>
+                        <div class="fa">| (kernel space - this is binder.c)</div>
+                        <div class="fn">CameraService receives BR_TRANSACTION, dispatches to handler</div>
+                        <div class="fa">| (reply takes the same path back)</div>
+                        <div class="fn">App receives camera device handle - also a Binder object</div>
+                    </div>
+                </div>
+
+                <ul class="sl">
+                    <li>Opening the camera asks CameraService for device access - cross-process Binder call</li>
+                    <li>Installing an APK routes through PackageManagerService - Binder call, carries file descriptors
+                    </li>
+                    <li>Requesting GPS location goes through LocationManagerService - Binder, with callback objects</li>
+                    <li>Launching any Activity round-trips through ActivityManagerService - two Binder transactions
+                        minimum</li>
+                    <li>Unlocking the screen talks to the keystore and LockSettingsService - Binder, security-critical
+                        path</li>
+                    <li>Any permission check, any service binding, any broadcast - all Binder transactions</li>
+                </ul>
+
+                <p>In every one of those cases, the app process and the service process share no memory. They cannot
+                    call each other's functions directly. The kernel mediates every single exchange - and "the kernel"
+                    in this context means binder_transaction() at line 2905 of binder.c, which we are going to read
+                    together today.</p>
+
+                <h2 class="sh">What the attack surface looks like from a researcher's perspective</h2>
+                <p>The exploitability argument is simple. A bug in a camera driver affects devices with that camera. A
+                    bug in a GPU driver affects devices with that GPU. A bug in binder.c affects every Android device
+                    running that kernel. The attack surface is reachable from a sandboxed app - no hardware access
+                    required, no special permissions, just an open() on /dev/binder and an ioctl(). And the code that
+                    handles that ioctl is parsing data that entirely came from the calling process, which means it came
+                    from an attacker if the calling process is malicious.</p>
+
+                <div class="pull">If almost everything on the device crosses this one driver, what happens when the
+                    driver breaks?</div>
+
+                <h2 class="sh">A brief note on what this session promises</h2>
+                <p>By the end of this session you will have a working fuzzer sending malformed transactions into the
+                    driver, a reproducible environment to observe crashes, and enough understanding of the binder_proc /
+                    binder_node / binder_ref lifetime model that when your fuzzer produces a KASAN splat you can look at
+                    the backtrace and have a real hypothesis about what invariant was violated, not just a crash you
+                    cannot explain. The abstract said "you will have enough understanding to keep going on your own."
+                    This is what that means in practice.</p>
+
+                <div class="pnav">
+                    <span class="pnav-text">
+
+                        The remainder of the webinar consists of three recorded demonstrations.
+
+                        Each recording illustrates one stage of a practical Binder fuzzing workflow,
+                        allowing us to focus on methodology and observation rather than waiting
+                        for long-running tool execution during the session.
+
+                    </span>
+                    <button class="pnav-btn" onclick="go('s2a')">Next: Locking Model + Structs</button>
+                </div>
+            </div>
+
+            <!-- S2A: LOCKING + STRUCTS -->
+            <div class="page" id="page-s2a">
+                <div class="kicker">Section 02a / 0:10 to 0:22</div>
+                <h1 class="pt">Locking Model and the Four Structs</h1>
+                <p class="dek">The binder.c file opens with a locking comment before a single line of logic. That
+                    comment is not documentation - it is a threat model. It tells you exactly what the driver considers
+                    important enough to protect with a spinlock, which is a direct map to where races and use-after-free
+                    bugs will concentrate.</p>
+
+                <h2 class="sh">The locking comment - verbatim from the file</h2>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 8–38</div>
+                    </div>
+                    <pre><span class="cm">/*
+ * Locking overview
+ *
+ * There are 3 main spinlocks which must be acquired in the
+ * order shown:
+ *
+ * 1) proc->outer_lock : protects binder_ref
+ *    binder_proc_lock() and binder_proc_unlock() are
+ *    used to acq/rel.
+ * 2) node->lock : protects most fields of binder_node.
+ *    binder_node_lock() and binder_node_unlock() are
+ *    used to acq/rel
+ * 3) proc->inner_lock : protects the thread and node lists
+ *    (proc->threads, proc->waiting_threads, proc->nodes)
+ *    and all todo lists associated with the binder_proc
+ *    (proc->todo, thread->todo, proc->delivered_death and
+ *    node->async_todo), as well as thread->transaction_stack
+ *    binder_inner_proc_lock() and binder_inner_proc_unlock()
+ *    are used to acq/rel
+ *
+ * Any lock under procA must never be nested under any lock at the same
+ * level or below on procB.
+ *
+ * Functions that require a lock held on entry indicate which lock
+ * in the suffix of the function name:
+ *
+ * foo_olocked() : requires node->outer_lock
+ * foo_nlocked() : requires node->lock
+ * foo_ilocked() : requires proc->inner_lock
+ * foo_oilocked(): requires proc->outer_lock and proc->inner_lock
+ * foo_nilocked(): requires node->lock and proc->inner_lock
+ * ...
+ */</span></pre>
+                </div>
+                <div class="cb-note">Read the function suffix convention as a machine-checkable contract. Every time you
+                    see binder_foo_ilocked() called in the codebase, you know inner_lock must be held at that callsite.
+                    If you ever find an _ilocked function being called without the lock - that is a bug. This convention
+                    is how you audit the driver without needing to trace every spinlock acquisition manually.</div>
+
+                <h2 class="sh">What the three-lock order means for bug finding</h2>
+                <p>The requirement that locks must be acquired in order (outer -> node -> inner) prevents classic
+                    deadlocks where thread A holds lock 1 waiting for lock 2 while thread B holds lock 2 waiting for
+                    lock 1. But it also means any code path that acquires these locks in the wrong order is introducing
+                    a deadlock risk. And any code path that drops a lock mid-operation to call into sleeping code (like
+                    memory allocation) and then reacquires it is creating a window where another thread can modify the
+                    protected data.</p>
+
+                <p>The teardown path in binder_deferred_release, which we will look at in Section 03b, drops and
+                    reacquires inner_lock on every iteration of the nodes loop. That pattern is structurally correct but
+                    only if every caller that accesses nodes concurrently respects the tmpref increment discipline. If
+                    any caller forgets to increment tmpref before dropping the lock, the node can be freed under it.
+                    That is the entire lifetime model in one sentence.</p>
+
+                <div class="lrule">
+                    <div class="lk">foo_olocked()</div>
+                    <div class="lv">-- requires proc->outer_lock (lock #1)</div>
+                    <div class="lk">foo_nlocked()</div>
+                    <div class="lv">-- requires node->lock (lock #2)</div>
+                    <div class="lk">foo_ilocked()</div>
+                    <div class="lv">-- requires proc->inner_lock (lock #3)</div>
+                    <div class="lk">foo_oilocked()</div>
+                    <div class="lv">-- requires outer_lock AND inner_lock</div>
+                    <div class="lk">foo_nilocked()</div>
+                    <div class="lv">-- requires node->lock AND inner_lock</div>
+                </div>
+
+                <h2 class="sh">The four structures - read from their init functions, not descriptions</h2>
+                <p>Rather than listing field names abstractly, here is what the driver actually does when each structure
+                    is created. This tells you what each structure represents and what invariants it relies on from the
+                    moment it is born.</p>
+
+                <div class="sg">
+                    <div class="sc">
+                        <div class="sc-name">binder_proc</div>
+                        <div class="sc-loc">Created in binder_open(), freed by binder_proc_dec_tmpref() ->
+                            binder_free_proc()</div>
+                        <div class="sc-desc">Represents one process with an open file descriptor to /dev/binder. Root
+                            container - everything else (threads, nodes, refs) hangs off this struct via rb-trees. Lives
+                            as long as the fd is open.</div>
+                        <div class="sc-fields">
+                            inner_lock <span class="sv">-- protects threads, nodes, todo lists</span><br>
+                            outer_lock <span class="sv">-- protects refs rb-trees</span><br>
+                            tmp_ref <span class="sv">-- prevents free while in use by other code</span><br>
+                            is_dead <span class="sv">-- set true in binder_deferred_release()</span><br>
+                            nodes <span class="sv">-- rb-tree of binder_node, keyed by ptr</span><br>
+                            threads <span class="sv">-- rb-tree of binder_thread, keyed by pid</span><br>
+                            refs_by_desc <span class="sv">-- rb-tree of binder_ref, by handle number</span>
+                        </div>
+                    </div>
+                    <div class="sc">
+                        <div class="sc-name">binder_node</div>
+                        <div class="sc-loc">Created in binder_new_node() (line 846), init in binder_init_node_ilocked()
+                            (line 790)</div>
+                        <div class="sc-desc">An object this process exports - something other processes are allowed to
+                            call. Keyed in the owning proc's rb-tree by the userspace pointer value (ptr field). When
+                            the owning proc dies, the node must survive until all binder_refs pointing to it are cleaned
+                            up.</div>
+                        <div class="sc-fields">
+                            lock <span class="sv">-- node->lock (lock #2)</span><br>
+                            proc <span class="sv">-- owning binder_proc (NULL when proc is dead)</span><br>
+                            ptr <span class="sv">-- userspace pointer - rb-tree key</span><br>
+                            cookie <span class="sv">-- userspace cookie, returned on BR_TRANSACTION</span><br>
+                            tmp_refs <span class="sv">-- prevents free while code holds this node</span><br>
+                            accept_fds <span class="sv">-- set from FLAT_BINDER_FLAG_ACCEPTS_FDS</span><br>
+                            refs <span class="sv">-- hlist of all binder_refs pointing at this node</span>
+                        </div>
+                    </div>
+                    <div class="sc">
+                        <div class="sc-name">binder_thread</div>
+                        <div class="sc-loc">Created lazily in binder_get_thread(), freed by binder_free_thread()</div>
+                        <div class="sc-desc">A thread inside a proc that is actively participating in Binder - either
+                            handling incoming transactions or waiting to be woken. Has its own todo list and a
+                            transaction_stack that tracks nested synchronous calls. Protected by proc->inner_lock.</div>
+                        <div class="sc-fields">
+                            tmp_ref <span class="sv">-- atomic, prevents free mid-operation</span><br>
+                            transaction_stack <span class="sv">-- innermost pending transaction</span><br>
+                            todo <span class="sv">-- work items for this thread (inner_lock)</span><br>
+                            rb_node <span class="sv">-- position in proc->threads rb-tree</span><br>
+                            pid <span class="sv">-- thread's pid, rb-tree key</span><br>
+                            proc <span class="sv">-- back-pointer to owning binder_proc</span>
+                        </div>
+                    </div>
+                    <div class="sc">
+                        <div class="sc-name">binder_ref</div>
+                        <div class="sc-loc">Created in binder_get_ref_for_node_olocked() (line 1138), protected by
+                            proc->outer_lock</div>
+                        <div class="sc-desc">A handle one process holds that points to another process's binder_node.
+                            The caller uses a numeric descriptor (the handle) to identify the target; the driver maps
+                            that to a binder_ref, which points to the actual binder_node. This cross-process pointer is
+                            the structural source of lifetime risk.</div>
+                        <div class="sc-fields">
+                            data.strong <span class="sv">-- strong reference count</span><br>
+                            data.weak <span class="sv">-- weak reference count</span><br>
+                            data.desc <span class="sv">-- the handle number the caller uses</span><br>
+                            node <span class="sv">-- pointer to the target binder_node</span><br>
+                            proc <span class="sv">-- back-pointer to the holder's binder_proc</span><br>
+                            death <span class="sv">-- death notification registered for this ref</span>
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="sh">How binder_init_node_ilocked actually inserts a node</h2>
+                <p>Rather than just describing what binder_node contains, here is the actual insertion code - which
+                    shows the rb-tree walk and the tmpref initialization that the rest of the lifetime model depends on:
+                </p>
+
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 790–845</div>
+                    </div>
+                    <pre><span class="ck">static struct</span> binder_node *binder_init_node_ilocked(
+            <span class="ck">struct</span> binder_proc *proc,
+            <span class="ck">struct</span> binder_node *new_node,
+            <span class="ck">struct</span> flat_binder_object *fp)
+{
+    <span class="ck">struct</span> rb_node **p = &proc->nodes.rb_node;
+    <span class="ck">struct</span> rb_node *parent = NULL;
+    <span class="ck">struct</span> binder_node *node;
+    binder_uintptr_t ptr = fp ? fp->binder : 0;
+    binder_uintptr_t cookie = fp ? fp->cookie : 0;
+    __u32 flags = fp ? fp->flags : 0;
+
+    assert_spin_locked(&proc->inner_lock);  <span class="cm">/* enforces naming convention */</span>
+
+    <span class="ck">while</span> (*p) {
+        parent = *p;
+        node = rb_entry(parent, <span class="ck">struct</span> binder_node, rb_node);
+        <span class="ck">if</span> (ptr < node->ptr)
+            p = &(*p)->rb_left;
+        <span class="ck">else if</span> (ptr > node->ptr)
+            p = &(*p)->rb_right;
+        <span class="ck">else</span> {
+            <span class="cm">/*
+             * A matching node is already in the rb tree.
+             * Abandon the init and return it.
+             */</span>
+            binder_inc_node_tmpref_ilocked(node);
+            <span class="ck">return</span> node;
+        }
+    }
+    node = new_node;
+    binder_stats_created(BINDER_STAT_NODE);
+    node->tmp_refs++;              <span class="cm">/* caller holds this ref */</span>
+    rb_link_node(&node->rb_node, parent, p);
+    rb_insert_color(&node->rb_node, &proc->nodes);
+    node->debug_id = atomic_inc_return(&binder_last_id);
+    node->proc = proc;
+    node->ptr = ptr;               <span class="cm">/* userspace pointer = rb-tree key */</span>
+    node->cookie = cookie;         <span class="cm">/* returned on BR_TRANSACTION */</span>
+    node->accept_fds = !!(flags & FLAT_BINDER_FLAG_ACCEPTS_FDS);
+    spin_lock_init(&node->lock);
+    INIT_LIST_HEAD(&node->async_todo);
+    <span class="ck">return</span> node;
+}</pre>
+                </div>
+                <div class="cb-note">Three things to note: (1) the assert_spin_locked at the top - this is the _ilocked
+                    naming convention enforced at runtime in debug builds. (2) tmp_refs is set to 1 before the node is
+                    inserted - the caller holds the initial reference. (3) the node's ptr field is the userspace
+                    pointer, keyed directly from the flat_binder_object. This means if two transactions race to create a
+                    node with the same ptr, the second one finds the existing node and increments its tmpref instead of
+                    creating a duplicate. The rb-tree walk under inner_lock is what makes this race-safe.</div>
+
+                <h2 class="sh">The relationship the rest of the talk depends on</h2>
+
+                <div class="diag">
+                    <div class="diag-lbl">Struct ownership and lifetime dependencies</div>
+                    <div class="flow">
+                        <div class="fn hot">binder_proc (lives while /dev/binder fd is open)</div>
+                        <div class="fa">|-- owns (via proc->nodes rb-tree, protected by inner_lock)</div>
+                        <div class="fn">binder_node (lives while proc owns it OR any binder_ref points to it)</div>
+                        <div class="fa">|-- referenced by (via node->refs hlist)</div>
+                        <div class="fn">binder_ref (in a DIFFERENT proc's refs_by_desc rb-tree)</div>
+                        <div class="fa label">If binder_proc dies before binder_ref is cleaned up, binder_ref->node is a
+                            dangling pointer.</div>
+                        <div class="fn danger">UAF: ref->node accessed after node->proc is NULL and node is freed</div>
+                    </div>
+                </div>
+
+                <div class="ann"><strong>The invariant everything else enforces:</strong> a binder_node must not be
+                    freed while any code path holds a pointer to it that is not backed by a tmpref increment. Every UAF
+                    in this driver's history is a violation of this rule - under a race condition, under a missed
+                    cleanup, or under a refcount path that two concurrent operations disagree about.</div>
+                <div class="page">
+
+                    <div class="kicker">
+
+                        Research Mindset
+
+                    </div>
+
+                    <h1 class="pt">
+
+                        Questions I Ask While Reading Binder
+
+                    </h1>
+
+                    <table class="bt">
+
+                        <tr>
+
+                            <th>Question</th>
+
+                            <th>Reason</th>
+
+                        </tr>
+
+                        <tr>
+
+                            <td>
+
+                                Who owns this object?
+
+                            </td>
+
+                            <td>
+
+                                Ownership determines lifetime.
+
+                            </td>
+
+                        </tr>
+
+                        <tr>
+
+                            <td>
+
+                                Who can modify it?
+
+                            </td>
+
+                            <td>
+
+                                Synchronization boundary.
+
+                            </td>
+
+                        </tr>
+
+                        <tr>
+
+                            <td>
+
+                                When can it disappear?
+
+                            </td>
+
+                            <td>
+
+                                Lifetime bugs begin here.
+
+                            </td>
+
+                        </tr>
+
+                        <tr>
+
+                            <td>
+
+                                Which fields originate from userspace?
+
+                            </td>
+
+                            <td>
+
+                                Potential attack surface.
+
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                Which assumptions are enforced?
+                            </td>
+                            <td>
+                                Broken assumptions become vulnerabilities.
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="pnav">
+                    <span class="pnav-text">Now the entry point - the single function every Binder transaction from
+                        userspace passes through without exception.</span>
+                    <button class="pnav-btn" onclick="go('s2b')">Next: binder_ioctl</button>
+                </div>
+            </div>
+
+            <!-- S2B: BINDER_IOCTL -->
+            <div class="page" id="page-flow">
+
+                <div class="kicker">
+                    Mental Model
+                </div>
+
+                <h1 class="pt">
+                    One Binder Transaction
+                </h1>
+
+                <div class="flow-large">
+
+                    Application
+
+                    ↓
+
+                    Parcel
+
+                    ↓
+
+                    ioctl(BINDER_WRITE_READ)
+
+                    ↓
+
+                    binder_ioctl()
+
+                    ↓
+
+                    binder_thread_write()
+
+                    ↓
+
+                    binder_transaction()
+
+                    ↓
+
+                    Target Thread
+
+                    ↓
+
+                    Target Process
+
+                    ↓
+
+                    Reply
+
+                </div>
+
+                <p class="ann">
+
+                    Every synchronous Binder transaction eventually follows this path.
+
+                    The remainder of the session simply zooms into individual stages of this pipeline.
+
+                </p>
+            </div>
+            <div class="page" id="page-s2b">
+                <div class="kicker">Section 02b / 0:22 to 0:30</div>
+                <h1 class="pt">binder_ioctl - The Front Door</h1>
+                <p class="dek">There is one function every transaction passes through without exception. Not one of
+                    several - one. If you are writing a fuzzer that targets the driver layer, you open /dev/binder and
+                    you call ioctl() into this function. Everything else in the driver is downstream of this single
+                    entry point. It is at line 5423 of the source file.</p>
+
+                <h2 class="sh">The complete ioctl handler</h2>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 5423–5530</div>
+                    </div>
+                    <pre><span class="ck">static long</span> binder_ioctl(<span class="ck">struct</span> file *filp,
+                         <span class="ck">unsigned int</span> cmd,
+                         <span class="ck">unsigned long</span> arg)
+{
+    <span class="ck">int</span> ret;
+    <span class="ck">struct</span> binder_proc *proc = filp->private_data;
+    <span class="ck">struct</span> binder_thread *thread;
+    <span class="ck">void</span> __user *ubuf = (<span class="ck">void</span> __user *)arg;
+
+    trace_binder_ioctl(cmd, arg);
+
+    ret = wait_event_interruptible(binder_user_error_wait,
+                                   binder_stop_on_user_error < 2);
+    <span class="ck">if</span> (ret) <span class="ck">goto</span> err_unlocked;
+
+    thread = binder_get_thread(proc);   <span class="cm">/* create or find thread struct */</span>
+    <span class="ck">if</span> (thread == NULL) {
+        ret = -ENOMEM;
+        <span class="ck">goto</span> err;
+    }
+
+    <span class="ck">switch</span> (cmd) {
+    <span class="ck">case</span> BINDER_WRITE_READ:
+        ret = binder_ioctl_write_read(filp, arg, thread);
+        <span class="ck">break</span>;
+
+    <span class="ck">case</span> BINDER_SET_MAX_THREADS: {
+        u32 max_threads;
+        <span class="ck">if</span> (copy_from_user(&max_threads, ubuf, <span class="ck">sizeof</span>(max_threads))) {
+            ret = -EINVAL; <span class="ck">goto</span> err;
+        }
+        binder_inner_proc_lock(proc);
+        proc->max_threads = max_threads;   <span class="cm">/* no upper bound check */</span>
+        binder_inner_proc_unlock(proc);
+        <span class="ck">break</span>;
+    }
+
+    <span class="ck">case</span> BINDER_SET_CONTEXT_MGR_EXT: {
+        <span class="ck">struct</span> flat_binder_object fbo;
+        <span class="ck">if</span> (copy_from_user(&fbo, ubuf, <span class="ck">sizeof</span>(fbo))) {
+            ret = -EINVAL; <span class="ck">goto</span> err;
+        }
+        ret = binder_ioctl_set_ctx_mgr(filp, &fbo);
+        <span class="ck">break</span>;
+    }
+
+    <span class="ck">case</span> BINDER_SET_CONTEXT_MGR:
+        ret = binder_ioctl_set_ctx_mgr(filp, NULL);
+        <span class="ck">break</span>;
+
+    <span class="ck">case</span> BINDER_THREAD_EXIT:
+        binder_thread_release(proc, thread);
+        thread = NULL;
+        <span class="ck">break</span>;
+
+    <span class="ck">case</span> BINDER_VERSION: {
+        <span class="ck">struct</span> binder_version __user *ver = ubuf;
+        <span class="ck">if</span> (put_user(BINDER_CURRENT_PROTOCOL_VERSION,
+                     &ver->protocol_version)) {
+            ret = -EINVAL; <span class="ck">goto</span> err;
+        }
+        <span class="ck">break</span>;
+    }
+
+    <span class="ck">case</span> BINDER_GET_NODE_INFO_FOR_REF: {
+        <span class="ck">struct</span> binder_node_info_for_ref info;
+        <span class="ck">if</span> (copy_from_user(&info, ubuf, <span class="ck">sizeof</span>(info))) {
+            ret = -EFAULT; <span class="ck">goto</span> err;
+        }
+        ret = binder_ioctl_get_node_info_for_ref(proc, &info);
+        <span class="ck">if</span> (ret < 0) <span class="ck">goto</span> err;
+        <span class="ck">if</span> (copy_to_user(ubuf, &info, <span class="ck">sizeof</span>(info))) {
+            ret = -EFAULT; <span class="ck">goto</span> err;
+        }
+        <span class="ck">break</span>;
+    }
+
+    <span class="ck">case</span> BINDER_FREEZE: {
+        <span class="cm">/* ... copies binder_freeze_info from userspace,
+               locks binder_procs_lock, walks proc list ... */</span>
+        <span class="ck">break</span>;
+    }
+    }
+    <span class="cm">/* cleanup and return ... */</span>
+}</pre>
+                </div>
+                <div class="cb-note">The first thing binder_ioctl does is pull the binder_proc off filp->private_data
+                    (set during binder_open()) and then call binder_get_thread() to find or create a binder_thread
+                    struct for the calling thread. From this point, every operation has both a proc and a thread in
+                    scope - and both are pointers into the struct hierarchy from Section 02a. <strong>Note
+                        BINDER_SET_MAX_THREADS:</strong> it copies a u32 from userspace and writes it directly into
+                    proc->max_threads with no upper bound enforcement. A process can set this to 0xFFFFFFFF. Whether
+                    that is exploitable depends on how max_threads is consumed downstream, but it is the kind of
+                    unchecked input that is worth examining.</div>
+
+                <h2 class="sh">Why BINDER_WRITE_READ is where almost everything real goes</h2>
+                <p>BINDER_WRITE_READ is the ioctl command that carries actual transactions. It routes to
+                    binder_ioctl_write_read(), which reads a struct binder_write_read from userspace, then dispatches
+                    the write side to binder_thread_write() at line 3926 and the read side to binder_thread_read() at
+                    line 4495. binder_thread_write() is where BC_TRANSACTION and BC_REPLY commands land, which call into
+                    binder_transaction() at line 2905 - the function that does the actual parsing and copying.</p>
+
+                <div class="diag">
+                    <div class="diag-lbl">BINDER_WRITE_READ dispatch chain</div>
+                    <div class="flow">
+                        <div class="fn hot">binder_ioctl() -- line 5423</div>
+                        <div class="fa">| cmd == BINDER_WRITE_READ</div>
+                        <div class="fn">binder_ioctl_write_read() -- copies struct binder_write_read from userspace
+                        </div>
+                        <div class="fa">| write_size > 0: dispatch write buffer first</div>
+                        <div class="fn">binder_thread_write() -- line 3926</div>
+                        <div class="fa">| cmd == BC_TRANSACTION or BC_REPLY</div>
+                        <div class="fn">binder_transaction() -- line 2905 (the big one)</div>
+                        <div class="fa">| after write: if read_size > 0</div>
+                        <div class="fn">binder_thread_read() -- line 4495 (target thread wakes here)</div>
+                    </div>
+                </div>
+
+                <h2 class="sh">Other ioctl commands as secondary surfaces</h2>
+                <table class="bt">
+                    <tr>
+                        <th>Command</th>
+                        <th>What it reads from userspace</th>
+                        <th>Where it goes</th>
+                    </tr>
+                    <tr>
+                        <td class="mm">BINDER_SET_MAX_THREADS</td>
+                        <td>u32 max_threads</td>
+                        <td>Written directly to proc->max_threads, no upper bound check in this version</td>
+                    </tr>
+                    <tr>
+                        <td class="mm">BINDER_SET_CONTEXT_MGR_EXT</td>
+                        <td>struct flat_binder_object</td>
+                        <td>binder_ioctl_set_ctx_mgr() - registers this proc as the context manager (servicemanager)
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="mm">BINDER_GET_NODE_INFO_FOR_REF</td>
+                        <td>struct binder_node_info_for_ref</td>
+                        <td>Looks up a node by handle, returns debug info - reads from the ref rb-tree under outer_lock
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="mm">BINDER_GET_NODE_DEBUG_INFO</td>
+                        <td>struct binder_node_debug_info</td>
+                        <td>Walks binder_dead_nodes list - interesting because dead_nodes_lock is a global spinlock</td>
+                    </tr>
+                    <tr>
+                        <td class="mm">BINDER_FREEZE</td>
+                        <td>struct binder_freeze_info (pid)</td>
+                        <td>Walks the global binder_procs list under binder_procs_lock to find and freeze all procs with
+                            matching pid</td>
+                    </tr>
+                    <tr>
+                        <td class="mm">BINDER_THREAD_EXIT</td>
+                        <td>nothing - uses calling thread</td>
+                        <td>binder_thread_release() - the start of thread teardown, which has its own lifetime model
+                        </td>
+                    </tr>
+                </table>
+
+                <div class="ann"><strong>For a fuzzer at the ioctl layer:</strong> BINDER_WRITE_READ is the primary
+                    target because it carries arbitrary transaction data into binder_transaction(). The others are worth
+                    covering in your mutation corpus because BINDER_FREEZE, for example, takes a pid from userspace and
+                    walks the global proc list - racing BINDER_FREEZE with a concurrent close() of the same proc's fd is
+                    the kind of concurrent pattern that has historically produced bugs.</div>
+
+                <div class="pnav">
+                    <span class="pnav-text">Now we go inside binder_transaction() - the function that actually resolves
+                        the target, allocates a buffer, and copies the transaction data. This is where most of the
+                        interesting parsing happens.</span>
+                    <button class="pnav-btn" onclick="go('s2c')">Next: Walking a Transaction</button>
+                </div>
+            </div>
+
+            <!-- S2C: WALKING A TRANSACTION -->
+            <div class="page" id="page-s2c">
+                <div class="kicker">Section 02c / 0:30 to 0:40</div>
+                <h1 class="pt">Walking a Transaction</h1>
+                <p class="dek">binder_transaction() at line 2905 is the longest and most complex function in the driver.
+                    It does target resolution, buffer allocation, the object offset loop, and object translation - all
+                    in sequence, with error paths that have to correctly unwind everything the happy path did. This page
+                    walks the first half: how the target is found.</p>
+
+                <h2 class="sh">What the function receives and sets up</h2>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 2905–2970</div>
+                    </div>
+                    <pre><span class="ck">static void</span> binder_transaction(<span class="ck">struct</span> binder_proc *proc,
+                              <span class="ck">struct</span> binder_thread *thread,
+                              <span class="ck">struct</span> binder_transaction_data *tr,
+                              <span class="ck">int</span> reply,
+                              binder_size_t extra_buffers_size)
+{
+    <span class="ck">struct</span> binder_transaction *t;
+    <span class="ck">struct</span> binder_proc *target_proc = NULL;
+    <span class="ck">struct</span> binder_thread *target_thread = NULL;
+    <span class="ck">struct</span> binder_node *target_node = NULL;
+    <span class="ck">struct</span> binder_transaction *in_reply_to = NULL;
+    uint32_t return_error = 0;
+    binder_size_t last_fixup_obj_off = 0;
+
+    <span class="cm">/* ... logging setup ... */</span>
+
+    t = kzalloc_obj(*t);            <span class="cm">/* allocate the transaction struct */</span>
+    <span class="ck">if</span> (!t) { return_error = BR_FAILED_REPLY; <span class="ck">goto</span> err_alloc_t_failed; }
+    INIT_LIST_HEAD(&t->fd_fixups);  <span class="cm">/* deferred FD fixup list -- important later */</span>
+    spin_lock_init(&t->lock);
+
+    t->from_pid = proc->pid;
+    t->from_tid = thread->pid;
+    t->sender_euid = current_euid();
+    t->code = tr->code;
+    t->flags = tr->flags;
+    t->is_async = !reply && (tr->flags & TF_ONE_WAY);
+    <span class="ck">if</span> (!reply && !(tr->flags & TF_ONE_WAY))
+        t->from = thread;   <span class="cm">/* synchronous: caller is identified for reply routing */</span>
+}</pre>
+                </div>
+                <div class="cb-note">The transaction struct copies metadata from the binder_transaction_data that came
+                    from userspace: the target handle, the code (like the RPC method number), the flags, and the calling
+                    thread's euid. Notice that t->sender_euid = current_euid() - this is the security-relevant identity
+                    that service implementations use to enforce permissions. It comes from the kernel, not from the
+                    userspace process, which is one reason Binder is trusted for permission enforcement where
+                    socket-based IPC is not.</div>
+
+                <h2 class="sh">Target resolution - how a handle number becomes a node pointer</h2>
+                <p>If this is not a reply (reply == 0), the driver has to resolve tr->target.handle - the integer handle
+                    number the calling process is using - into a binder_proc and binder_node it can actually deliver the
+                    transaction to. This involves the binder_ref lookup under outer_lock.</p>
+
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 3034–3085</div>
+                    </div>
+                    <pre"> <span class="ck">if</span> (tr->target.handle) {
+                        <span class="ck">struct</span> binder_ref *ref;
+                        <span class="cm">/*
+                            * There must already be a strong ref on this node.
+                            * If so, do a strong increment to ensure it stays
+                            * alive until the transaction is done.
+                            */</span>
+                        binder_proc_lock(proc); <span class="cm">/* acquires outer_lock */</span>
+                        ref = binder_get_ref_olocked(proc, tr->target.handle, <span class="cs">true</span>);
+                        <span class="ck">if</span> (ref) {
+                        target_node = binder_get_node_refs_for_txn(
+                        ref->node, &target_proc,
+                        &return_error);
+                        } <span class="ck">else</span> {
+                        binder_user_error(<span class="cs">"%d:%d got transaction to invalid handle, %u\n"</span>,
+                        proc->pid, thread->pid, tr->target.handle);
+                        return_error = BR_FAILED_REPLY;
+                        }
+                        binder_proc_unlock(proc);
+                        } <span class="ck">else</span> {
+                        <span class="cm">/* handle == 0: target is the context manager (servicemanager) */</span>
+                        mutex_lock(&context->context_mgr_node_lock);
+                        target_node = context->binder_context_mgr_node;
+                        <span class="ck">if</span> (target_node)
+                        target_node = binder_get_node_refs_for_txn(
+                        target_node, &target_proc, &return_error);
+                        <span class="ck">else</span>
+                        return_error = BR_DEAD_REPLY;
+                        mutex_unlock(&context->context_mgr_node_lock);
+                        }</pre>
+                </div>
+                <div class="cb-note"><strong>What binder_get_node_refs_for_txn() does:</strong> it takes the node
+                    pointer from the binder_ref, increments node->internal_strong_refs to hold the node alive for the
+                    duration of the transaction, and sets target_proc to node->proc. This is the moment where a dangling
+                    binder_ref becomes a problem - if the node's owning proc has already started teardown (is_dead ==
+                    true), this function has to catch that and return NULL. If it fails to catch it, target_proc will be
+                    a proc in the process of being freed.</div>
+
+                <h2 class="sh">The object offset loop - where attacker data drives code paths</h2>
+                <p>After target resolution and buffer allocation, binder_transaction walks the offsets array embedded in
+                    the parcel. Each offset points to a flat_binder_object header. The driver reads the type field from
+                    that header and dispatches to a translation function. This entire loop processes data that came
+                    directly from userspace - the number of objects, their types, their offsets, and all fields within
+                    each object.</p>
+
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 3353–3430</div>
+                    </div>
+                    <pre"> <span class="cm">/* Walk the offsets array. Each entry is a binder_size_t
+                            * pointing into the transaction buffer at a flat_binder_object. */</span>
+                        <span class="ck">for</span> (buffer_offset = off_start_offset;
+                        buffer_offset < off_end_offset; buffer_offset +=<span class="ck">sizeof</span>(binder_size_t))
+                            {
+                            binder_size_t object_offset;
+                            binder_alloc_copy_from_buffer(&target_proc->alloc,
+                            &object_offset,
+                            t->buffer, buffer_offset,
+                            <span class="ck">sizeof</span>(object_offset));
+
+                            copy_size = object_offset - user_offset;
+                            <span class="ck">if</span> (copy_size && (user_offset > object_offset ||
+                            object_offset > tr->data_size || ...)) {
+                            binder_user_error(<span class="cs">"got transaction with invalid data ptr\n"</span>);
+                            return_error = BR_FAILED_REPLY;
+                            <span class="ck">goto</span> err_copy_data_failed;
+                            }
+
+                            object_size = binder_get_object(target_proc, user_buffer,
+                            t->buffer, object_offset, &object);
+                            <span class="ck">if</span> (object_size == 0 || object_offset < off_min) {
+                                binder_user_error(<span class="cs">"invalid offset or object\n"</span>);
+                                <span class="ck">goto</span> err_bad_offset;
+                                }
+
+                                hdr = &object.hdr;
+                                <span class="ck">switch</span> (hdr->type) {
+                                <span class="ck">case</span> BINDER_TYPE_BINDER:
+                                <span class="ck">case</span> BINDER_TYPE_WEAK_BINDER:
+                                ret = binder_translate_binder(fp, t, thread);
+                                <span class="ck">break</span>;
+                                <span class="ck">case</span> BINDER_TYPE_HANDLE:
+                                <span class="ck">case</span> BINDER_TYPE_WEAK_HANDLE:
+                                ret = binder_translate_handle(fp, t, thread);
+                                <span class="ck">break</span>;
+                                <span class="ck">case</span> BINDER_TYPE_FD: {
+                                binder_size_t fd_offset = object_offset +
+                                (uintptr_t)&fp->fd - (uintptr_t)fp;
+                                ret = binder_translate_fd(fp->fd, fd_offset,
+                                t, thread, in_reply_to);
+                                <span class="ck">break</span>;
+                                }
+                                <span class="ck">case</span> BINDER_TYPE_FDA: <span class="cm">/* fd array -- has its
+                                    own parent validation */</span>
+                                <span class="ck">break</span>;
+                                <span class="ck">case</span> BINDER_TYPE_PTR: <span class="cm">/* scatter-gather buffer
+                                    pointer */</span>
+                                <span class="ck">break</span>;
+                                }
+                                }</pre>
+                </div>
+                <div class="cb-note"><strong>What your fuzzer is targeting in this loop:</strong> hdr->type comes from
+                    userspace. object_offset comes from userspace. The number of offsets (off_end_offset -
+                    off_start_offset) comes from userspace. The content of each flat_binder_object comes from userspace.
+                    A structure-aware fuzzer that sends malformed combinations of these - overlapping object ranges,
+                    invalid object types, FD numbers that are valid on the sender side but invalid in the context where
+                    fget() runs, off_start_offset larger than the buffer - is exercising every branch of this switch and
+                    every error path in the translation functions.</div>
+
+                <div class="pnav">
+                    <span class="pnav-text">Inside binder_translate_fd is where the most historically interesting
+                        lifetime model lives - the deferred fixup pattern that creates a window between fget() and the
+                        actual fd allocation in the target process.</span>
+                    <button class="pnav-btn" onclick="go('s2d')">Next: Object Translation + FDs</button>
+                </div>
+            </div>
+
+            <!-- S2D: OBJECT TRANSLATION + FD -->
+            <div class="page" id="page-s2d">
+                <div class="kicker">Section 02d / 0:40 to 0:50</div>
+                <h1 class="pt">Object Translation and the FD Lifetime Model</h1>
+                <p class="dek">The object offset loop dispatches to a family of binder_translate_* functions. Each one
+                    takes an object from the sender's parcel and transforms it so it is valid in the target process's
+                    address space. For file descriptors, this cannot be done immediately - which produces a two-phase
+                    pattern that has historically been the home of file descriptor lifetime bugs.</p>
+
+                <h2 class="sh">Why FD translation has to be deferred</h2>
+                <p>When a process sends a file descriptor through Binder, the target process needs to receive a file
+                    descriptor number that is valid in its own fd table - not the sender's. Duplicating an fd into
+                    another process's fd table using get_unused_fd_flags() and fd_install() has to happen from a thread
+                    running in that process's context, because fd tables are per-process kernel structures.
+                    binder_translate_fd() runs in the sender's context, so it cannot do this directly.</p>
+                <p>Instead, it creates a fixup record, stores the file struct reference in it, and queues the record on
+                    t->fd_fixups. The actual fd allocation happens later, when the target thread consumes the
+                    transaction via binder_thread_read(). This is the deferred fixup pattern.</p>
+
+                <h2 class="sh">binder_translate_fd - the complete implementation</h2>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 2266–2330</div>
+                    </div>
+                    <pre><span class="ck">static int</span> binder_translate_fd(<span class="ck">u32</span> fd, binder_size_t fd_offset,
+                              <span class="ck">struct</span> binder_transaction *t,
+                              <span class="ck">struct</span> binder_thread *thread,
+                              <span class="ck">struct</span> binder_transaction *in_reply_to)
+{
+    <span class="ck">struct</span> binder_proc *proc = thread->proc;
+    <span class="ck">struct</span> binder_proc *target_proc = t->to_proc;
+    <span class="ck">struct</span> binder_txn_fd_fixup *fixup;
+    <span class="ck">struct</span> file *file;
+    <span class="ck">int</span> ret = 0;
+    <span class="ck">bool</span> target_allows_fd;
+
+    <span class="cm">/* First check: does the target node accept FDs at all?
+     * The FLAT_BINDER_FLAG_ACCEPTS_FDS flag on the node controls this. */</span>
+    <span class="ck">if</span> (in_reply_to)
+        target_allows_fd = !!(in_reply_to->flags & TF_ACCEPT_FDS);
+    <span class="ck">else</span>
+        target_allows_fd = t->buffer->target_node->accept_fds;
+
+    <span class="ck">if</span> (!target_allows_fd) {
+        binder_user_error(<span class="cs">"%d:%d got %s with fd, %d, but target does not allow fds\n"</span>,
+                          proc->pid, thread->pid,
+                          in_reply_to ? <span class="cs">"reply"</span> : <span class="cs">"transaction"</span>, fd);
+        ret = -EPERM;
+        <span class="ck">goto</span> err_fd_not_accepted;
+    }
+
+    file = fget(fd);    <span class="cm">/* increment file refcount -- caller now owns a ref */</span>
+    <span class="ck">if</span> (!file) {
+        binder_user_error(<span class="cs">"%d:%d got transaction with invalid fd, %d\n"</span>,
+                          proc->pid, thread->pid, fd);
+        ret = -EBADF;
+        <span class="ck">goto</span> err_fget;
+    }
+
+    <span class="cm">/* LSM check: does this process have permission to transfer this file? */</span>
+    ret = security_binder_transfer_file(proc->cred, target_proc->cred, file);
+    <span class="ck">if</span> (ret < 0) {
+        ret = -EPERM;
+        <span class="ck">goto</span> err_security;
+    }
+
+    <span class="cm">/*
+     * Add fixup record for this transaction. The allocation
+     * of the fd in the target needs to be done from a
+     * target thread.
+     */</span>
+    fixup = kzalloc_obj(*fixup);
+    <span class="ck">if</span> (!fixup) {
+        ret = -ENOMEM;
+        <span class="ck">goto</span> err_alloc;
+    }
+    fixup->file = file;          <span class="cm">/* file struct, refcount incremented above */</span>
+    fixup->offset = fd_offset;   <span class="cm">/* where in target buffer to write the new fd */</span>
+    fixup->target_fd = -1;       <span class="cm">/* -1 until target thread allocates it */</span>
+    list_add_tail(&fixup->fixup_entry, &t->fd_fixups);
+    <span class="ck">return</span> ret;      <span class="cm">/* success: file ref held by fixup record */</span>
+
+err_alloc:
+err_security:
+    fput(file);      <span class="cm">/* release the ref we took with fget() */</span>
+err_fget:
+err_fd_not_accepted:
+    <span class="ck">return</span> ret;
+}</pre>
+                </div>
+                <div class="cb-note"><strong>The lifetime window this creates:</strong> after binder_translate_fd()
+                    succeeds, t->fd_fixups contains a fixup record holding a reference to the file struct. That
+                    reference is not released until either (a) the target thread processes the fixup and installs the
+                    fd, or (b) the transaction is torn down via binder_free_txn_fixups(), which calls fput() on every
+                    file in the list. If binder_free_txn_fixups() is not called on all error paths that abort the
+                    transaction, the file struct leaks. If it is called twice, that is a double-fput - use-after-free on
+                    the file struct's reference count.</div>
+
+                <h2 class="sh">binder_free_txn_fixups - the other half of the pattern</h2>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">drivers/android/binder.c</div>
+                        <div class="cb-lines">Lines 1607–1620</div>
+                    </div>
+                    <pre"><span class="ck">static void</span> binder_free_txn_fixups(<span class="ck">struct</span>
+                        binder_transaction *t)
+                        {
+                        <span class="ck">struct</span> binder_txn_fd_fixup *fixup, *tmp;
+
+                        list_for_each_entry_safe(fixup, tmp, &t->fd_fixups, fixup_entry) {
+                        fput(fixup->file); <span class="cm">/* release the fget() reference */</span>
+                        <span class="ck">if</span> (fixup->target_fd >= 0)
+                        put_unused_fd(fixup->target_fd);
+                        list_del(&fixup->fixup_entry);
+                        kfree(fixup);
+                        }
+                        }</pre>
+                </div>
+                <div class="cb-note">The check on target_fd >= 0 distinguishes fixups that were already applied
+                    (target_fd was allocated via get_unused_fd_flags but not yet installed via fd_install) from fixups
+                    that were never processed. If target_fd is -1, only fput() is needed. If target_fd is >= 0, the
+                    reserved fd slot also needs to be released via put_unused_fd(). A missing put_unused_fd() on a
+                    partially-applied fixup is an fd table slot leak.</div>
+
+                <h2 class="sh">The full fd translation timeline</h2>
+                <div class="diag">
+                    <div class="diag-lbl">Sender sends an FD -- what happens and when</div>
+                    <div class="flow">
+                        <div class="fn">Sender process: includes fd N in BINDER_TYPE_FD object in parcel</div>
+                        <div class="fa">| sender calls ioctl(BINDER_WRITE_READ)</div>
+                        <div class="fn">binder_transaction() -- offset loop processes BINDER_TYPE_FD</div>
+                        <div class="fa">| calls binder_translate_fd(fp->fd, fd_offset, t, ...)</div>
+                        <div class="fn hot">binder_translate_fd() -- fget(fd) increments file refcount</div>
+                        <div class="fa">| creates fixup record, stores file*, appends to t->fd_fixups</div>
+                        <div class="fn">Transaction delivered to target proc's todo list</div>
+                        <div class="fa">| target thread wakes in binder_thread_read()</div>
+                        <div class="fn">binder_apply_fd_fixups() -- runs in target thread context</div>
+                        <div class="fa">| get_unused_fd_flags() allocates fd slot in TARGET's fd table</div>
+                        <div class="fn safe">fd_install(target_fd, file) -- installs file struct, fget() ref consumed
+                        </div>
+                        <div class="fa label">If transaction fails before this point: binder_free_txn_fixups() must
+                            fput() every file in fd_fixups</div>
+                        <div class="fn danger">If any path skips binder_free_txn_fixups(): file struct refcount leak or
+                            UAF</div>
+                    </div>
+                </div>
+
+                <div class="ann"><strong>What a fuzzer exercises here:</strong> send a transaction with BINDER_TYPE_FD
+                    objects where the fd is valid at translate time but the transaction fails during allocation (ENOMEM
+                    on kzalloc_obj for the fixup), or send a transaction where the target node has accept_fds = 0 (EPERM
+                    path). Each error path has to correctly release whatever fget() calls had succeeded before the
+                    failure. A corpus that sends 0, 1, 5, and 50 FD objects per transaction, combined with memory
+                    pressure, will stress every branch of this cleanup logic.</div>
+
+                <div class="pnav">
+                    <span class="pnav-text">That covers how normal transactions work. Now the attack surface analysis -
+                        which layer to target first and exactly which entry points in the source handle each layer's
+                        input.</span>
+                    <button class="pnav-btn" onclick="go('s3a')">Next: Attack Surface - The Evolution of Binder Security</button>
+                </div>
+            </div>
+
+            <!-- S3A: ATTACK SURFACE -->
+<!-- ============================================================ -->
+<!-- S3A: THE EVOLUTION OF BINDER SECURITY -->
+<!-- ============================================================ -->
+<div class="page" id="page-s3a">
+    <div class="kicker">Section 03a / 0:50 to 1:05</div>
+    <h1 class="pt">The Evolution of Binder Security</h1>
+    <p class="dek">Binder was not designed to be secure in one pass. What you see in binder.c today is the product of more than twelve years of incremental engineering responses to real failures in real systems. Understanding how it evolved is more instructive than cataloguing what it got wrong.</p>
+
+    <h2 class="sh">Why Binder keeps changing</h2>
+    <p class="lede">Most kernel subsystems stabilize. Their interfaces settle, their invariants are established, and changes become infrequent. Binder has not done this. New fixes continue shipping in every kernel stable series because the problem space Binder operates in keeps expanding.</p>
+
+    <p>The original Binder driver was designed for a relatively simple Android ecosystem: a modest number of system services, synchronous transactions, and a straightforward lifetime model where each object's owner was unambiguous. Every assumption that seemed safe in 2008 has since been stress-tested against a fleet of billions of devices, aggressive memory pressure, multithreaded app runtimes, a Linux MM subsystem that itself kept evolving, and a security research community that reads kernel source code.</p>
+
+    <p>The result is a driver that has been modified in fundamental ways more than once. Lock granularity changed. The VMA pointer storage strategy was added, reverted, and redesigned. Reference counting gained explicit temporary references. The freeze notification subsystem introduced an entirely new category of asynchronous lifetime relationships. Offset validation that should have existed from the beginning was added incrementally as the consequences of its absence became concrete.</p>
+
+    <p>None of these changes happened because the original engineers were careless. They happened because the system grew in ways that outpaced the assumptions its lifetime model was built on.</p>
+
+    <h2 class="sh">A twelve-year timeline</h2>
+
+    <div class="diag">
+        <div class="diag-lbl">Binder security evolution - major engineering phases</div>
+        <div class="flow">
+            <div class="fn hot">2008 - Binder enters Linux staging (drivers/staging/android)</div>
+            <div class="fa">|</div>
+            <div class="fn">Initial design: synchronous IPC, simple ownership model, mmap-backed shared buffer</div>
+            <div class="fa">|  Assumptions: processes outlive their transactions, object ownership is clear, lock ordering is sufficient</div>
+            <div class="fn">2011–2017 - Android ecosystem growth</div>
+            <div class="fa">|  More services, more concurrent processes, more Binder objects per transaction</div>
+            <div class="fn">2017 - Early privilege escalation reports surface via Android Security Bulletins</div>
+            <div class="fa">|  Locking and reference handling gaps become visible at scale</div>
+            <div class="fn hot">2019 - CVE-2019-2215: UAF in binder_poll()</div>
+            <div class="fa">|  Watershed moment: explicit lifetime management becomes a design requirement, not an afterthought</div>
+            <div class="fn">2020–2022 - tmp_ref discipline hardens across the driver</div>
+            <div class="fa">|  binder_proc, binder_node, binder_thread all gain explicit temporary ownership</div>
+            <div class="fn hot">2023 - VMA lifetime era: mm and mmap interactions force major rethink</div>
+            <div class="fa">|  Linux MM change (dd2283f2605e) breaks Binder's assumption about mmap_sem semantics</div>
+            <div class="fn">CVE-2023-52609, CVE-2023-52438, CVE-2023-54157 - three fixes for the same class of VMA race</div>
+            <div class="fa">|  Each fix addresses a different code path where alloc->vma could be accessed after munmap()</div>
+            <div class="fn hot">2024 - Validation hardening and freeze subsystem complexity</div>
+            <div class="fa">|  Offset alignment, raw data bounds, freeze work cleanup ordering</div>
+            <div class="fn">CVE-2024-26926 - offset alignment check restored in binder_get_object()</div>
+            <div class="fn">CVE-2024-46740 - bounds check added before raw data copy overwrites offset section</div>
+            <div class="fn">CVE-2024-56554, CVE-2024-56555, CVE-2024-56556 - freeze notification lifetime bugs</div>
+            <div class="fa">|</div>
+            <div class="fn hot">2025 - Ongoing: binderfs lifetime, dbitmap allocator, descriptor management</div>
+        </div>
+    </div>
+
+    <h2 class="sh">Three forces that drove each phase</h2>
+
+    <p>Looking across the full history, three forces consistently triggered changes to the driver.</p>
+
+    <p>The first is <strong>Linux MM evolution.</strong> Binder has never existed in isolation from the broader kernel. When the MM subsystem changed how mmap_lock is held during munmap() in commit dd2283f2605e, Binder's assumption that mmap_read_lock() was sufficient to protect alloc->vma became incorrect overnight. The driver had to respond to a change it did not control.</p>
+
+    <p>The second is <strong>concurrency at scale.</strong> The lock model described in the header comment - outer_lock, node->lock, inner_lock in strict order - was sound from the start. But as Android added asynchronous work, workqueues, freeze notifications, and deferred cleanup, new code paths appeared that interleaved with that lock model in ways the original design did not anticipate. Each new asynchronous feature introduced new lifetime relationships that the existing reference discipline had to be extended to cover.</p>
+
+    <p>The third is <strong>input validation gaps surfacing late.</strong> Several recent fixes address checks that arguably should have existed from the beginning - offset alignment validation, raw data bounds checking before the offsets array is overwritten - but whose absence only became consequential when more adversarial inputs reached the parsing code. Validation requirements became visible through the consequences of their absence.</p>
+
+    <div class="pull">Binder did not become secure in one redesign. It evolved through many small engineering corrections, each one closing a gap that the previous design had not anticipated.</div>
+
+    <h2 class="sh">How Sections 1 and 2 connect to what follows</h2>
+
+    <p>Section 2 explained the lock model, the four core structures, and how binder_transaction() processes a parcel from userspace to delivery. That foundation is exactly what you need to understand the changes in this section. Each fix described on the following pages modifies a specific function you have already read - binder_update_page_range(), binder_alloc_free_page(), binder_get_object(), binder_cleanup_ref_olocked(), binder_add_freeze_work() - and each one makes sense only if you already know what that function is responsible for and what invariants it is supposed to maintain.</p>
+
+    <p>The structure of this section is chronological by era, not by bug type. The goal is not a catalogue of what broke. It is an understanding of how the engineering team's mental model of Binder's lifetime requirements changed over time, and why the code looks the way it does as a result.</p>
+
+    <div class="pnav">
+        <span class="pnav-text">The first major turning point came when Binder's lifetime assumptions no longer matched the reality of increasingly concurrent systems - and a single use-after-free made that visible to the entire security community.</span>
+        <button class="pnav-btn" onclick="go('s3b')">Next: Major Turning Points</button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- S3B: MAJOR TURNING POINTS IN BINDER SECURITY -->
+<!-- ============================================================ -->
+<div class="page" id="page-s3b">
+    <div class="kicker">Section 03b / 1:05 to 1:20</div>
+    <h1 class="pt">Major Turning Points in Binder Security</h1>
+    <p class="dek">Four eras defined how Binder's security model changed. Each era produced a cluster of related fixes that share a common root cause and a common engineering response. Read chronologically, they show a subsystem progressively strengthening its ownership guarantees under increasing complexity.</p>
+
+    <h2 class="sh">Era I - 2019: Explicit lifetime management becomes mandatory</h2>
+
+    <p>Before 2019, Binder's reference model relied heavily on implicit assumptions: that a binder_thread would not be freed while an ioctl was in progress on it, that a binder_proc would outlive the transactions it was serving, that the cleanup order during process exit was deterministic enough that no concurrent path could observe a half-freed object. These assumptions held well enough for a long time.</p>
+
+    <p>CVE-2019-2215 demonstrated concretely that they did not hold under adversarial scheduling. The bug was a use-after-free in binder_poll(): a binder_thread's wait queue entry could be accessed after the thread was freed because nothing prevented the thread's destruction from racing with a concurrent epoll operation. The root cause was not a missing check or a wrong value - it was the absence of any mechanism to extend a thread's lifetime beyond its nominal scope.</p>
+
+    <p>The engineering response was not just to fix that one race. It was to establish a general principle: any code path that loads a pointer to a binder object and then drops the lock protecting it must explicitly increment a temporary reference before doing so. This is the tmp_refs discipline that Section 2 described, and it was significantly hardened across the driver following this period.</p>
+
+    <div class="ann">
+        <strong>Engineering Lesson - 2019:</strong> Implicit lifetime assumptions break under concurrency. Once a subsystem is used from multiple threads and processes simultaneously, the only safe model is one where every object's lifetime is explicitly extended by the code that needs it. The binder_thread, binder_node, and binder_proc structures all gained or strengthened tmp_ref mechanisms as a direct consequence of this period.
+    </div>
+
+    <div class="diag">
+        <div class="diag-lbl">What explicit lifetime management looks like in practice</div>
+        <div class="flow">
+            <div class="fn">Code path loads pointer to binder_node from a binder_ref</div>
+            <div class="fa">|  Must increment node->tmp_refs BEFORE dropping outer_lock</div>
+            <div class="fn hot">binder_inc_node_tmpref_ilocked(node)  -- holds node alive</div>
+            <div class="fa">|  Now safe to drop inner_lock and operate on node</div>
+            <div class="fn">Work on the node -- translate, copy, enqueue</div>
+            <div class="fa">|  When finished, decrement</div>
+            <div class="fn">binder_put_node(node)  -- may free node here if all refs gone</div>
+            <div class="fa label">Without the increment: node could be freed by concurrent binder_node_release() between load and use</div>
+            <div class="fn danger">Without increment: use-after-free on node between lock drop and dereference</div>
+        </div>
+    </div>
+
+    <h2 class="sh">Era II - 2023: VMA and mm lifetime force a fundamental rethink</h2>
+
+    <p>Binder's memory allocator in binder_alloc.c maintains a pointer to the process's VMA (alloc->vma) and a pointer to its mm_struct (alloc->vma_vm_mm). This design allowed the allocator to insert pages into a process's address space during transactions without going through a syscall. The design worked until the Linux MM subsystem changed the semantics of mmap_sem during munmap().</p>
+
+    <p>Commit dd2283f2605e ("mm: mmap: zap pages with read mmap_sem in munmap") caused munmap() to downgrade the mmap write lock to a read lock after detaching the VMA from the rbtree. This meant that the VMA could be in the process of being torn down and freed while another thread held only the read lock - which was exactly what binder_update_page_range() was doing. Three separate fixes addressed three separate code paths that shared this assumption.</p>
+
+    <h3 class="ssh">CVE-2023-54157 - binder_update_page_range(): mmap_read_lock was no longer sufficient</h3>
+
+    <p>The immediate fix for the VMA race in binder_update_page_range() was to revert from mmap_read_lock() back to mmap_write_lock(). This was the conservative, correct fix: the write lock guarantees that no concurrent munmap() can complete while binder is accessing the VMA.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder_alloc.c</div>
+            <div class="cb-lines">Commit 1bb8a65190d4 - CVE-2023-54157</div>
+        </div>
+        <pre><span class="cm">/* Original: read lock was assumed sufficient after commit 720c24192404 */</span>
+<span class="cr">-  mmap_read_lock(mm);</span>
+<span class="cm">/* Fix: must hold write lock to prevent concurrent vm_area_free() in munmap() */</span>
+<span class="cs">+  mmap_write_lock(mm);</span>
+
+<span class="cm">/* Error paths also updated consistently */</span>
+<span class="cr">-  mmap_read_unlock(mm);</span>
+<span class="cs">+  mmap_write_unlock(mm);</span></pre>
+    </div>
+    <div class="cb-note">The commit message explains the exact sequence: commit 720c24192404 introduced the read lock on the assumption that it was sufficient. Commit dd2283f2605e in the MM subsystem broke that assumption by making the VMA accessible under a read lock during its own teardown. Binder had to follow.</div>
+
+    <h3 class="ssh">CVE-2023-52438 - binder_alloc_free_page(): shrinker callback races with munmap()</h3>
+
+    <p>A separate code path - the shrinker callback binder_alloc_free_page() - had the same underlying problem but required a different fix. Rather than upgrading to a write lock (which would have increased contention on an already hot path), the fix replaced the cached VMA pointer lookup with vma_lookup(), which performs a fresh lookup in the VMA rbtree and correctly returns NULL for a VMA that has been detached by munmap().</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder_alloc.c</div>
+            <div class="cb-lines">Commit 3f489c2067c5 - CVE-2023-52438</div>
+        </div>
+        <pre><span class="cm">/* Before: used cached alloc->vma pointer, could be freed under read lock */</span>
+<span class="cr">-  vma = binder_alloc_get_vma(alloc);</span>
+<span class="cm">/* After: fresh lookup fails safely if VMA has been detached by munmap() */</span>
+<span class="cs">+  vma = vma_lookup(mm, page_addr);
++  if (vma && vma != binder_alloc_get_vma(alloc))
++      goto err_invalid_vma;</span></pre>
+    </div>
+    <div class="cb-note">The KASAN report in the commit message shows the freed object being a vm_area_struct allocated during mmap_region() and freed by remove_vma() via RCU - exactly the sequence that the write lock had previously prevented. vma_lookup() is safe here because a detached VMA will not appear in the rbtree lookup even under the read lock.</div>
+
+    <h3 class="ssh">CVE-2023-52609 - binder_update_page_range(): mmput() on the wrong thread</h3>
+
+    <p>A third fix from the same engineering period addressed a different lifetime race, this time involving mm_struct refcounting rather than VMA access. binder_update_page_range() takes a reference on the remote process's mm_struct via mmget_not_zero(). If the remote process calls do_exit() concurrently, the final mmput() may end up running on the wrong thread, causing fput() cleanup work to be queued via TWA_RESUME - but if the holding thread is blocked waiting for a reply that will never come, that cleanup is indefinitely delayed.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder_alloc.c</div>
+            <div class="cb-lines">Commit 252a2a5569eb - CVE-2023-52609</div>
+        </div>
+        <pre><span class="cm">/* Before: mmput() schedules cleanup as TWA_RESUME on the calling thread */</span>
+<span class="cm">/* If calling thread is blocked waiting for reply, cleanup is deferred indefinitely */</span>
+<span class="cr">-  mmput(mm);</span>
+<span class="cm">/* After: mmput_async() schedules cleanup on the mm's own async_put_work WQ */</span>
+<span class="cs">+  mmput_async(mm);</span></pre>
+    </div>
+    <div class="cb-note">The commit message describes the exact scenario: Task A holds mmget_not_zero() on Task B's mm, Task B calls do_exit() and exit_mm() and mmput(). The final mmput() refcount decrement falls on Task A. Task A queues the fput() work as TWA_RESUME, meaning it only runs when Task A returns to userspace - but Task A is blocked in a synchronous Binder wait. mmput_async() moves the work to the mm's dedicated workqueue, decoupling the cleanup from Task A's scheduling state.</div>
+
+    <div class="ann">
+        <strong>Engineering Lesson - 2023:</strong> When a kernel subsystem your driver depends on changes its locking semantics, any assumption you made about that subsystem's stability becomes a latent bug. Binder's VMA access pattern was correct under the old mm_sem semantics and incorrect under the new ones. The lesson is not that Binder was wrong - it is that cross-subsystem invariants require constant revalidation as dependencies evolve. Three different fixes were needed because Binder had three different code paths that each embodied the same broken assumption in a slightly different way.
+    </div>
+
+    <h2 class="sh">Era III - 2024: Input validation hardens as parsing assumptions surface</h2>
+
+    <p>The 2024 validation fixes address a different category of problem. Rather than object lifetime or lock ordering, they address the driver's assumptions about the structure of data arriving from userspace - specifically, assumptions about offset alignment and the relationship between the data section and the offsets section of a transaction buffer.</p>
+
+    <h3 class="ssh">CVE-2024-26926 - Offset alignment check in binder_get_object()</h3>
+
+    <p>Commit 6d98eb95b450 ("binder: avoid potential data leakage when copying txn") changed how Binder objects are copied during transaction processing. In doing so it removed an offset alignment check that had previously been performed implicitly through binder_alloc_copy_from_buffer(). The replacement code using copy_from_user() did not include an equivalent check. The fix restored explicit alignment validation.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder.c</div>
+            <div class="cb-lines">Commit aaef73821a3b - CVE-2024-26926</div>
+        </div>
+        <pre>read_size = min_t(size_t, sizeof(*object), buffer->data_size - offset);
+
+<span class="cm">/* Before: only checked bounds, not alignment */</span>
+<span class="cr">- if (offset > buffer->data_size || read_size < sizeof(*hdr))</span>
+<span class="cm">/* After: alignment is also required -- misaligned offsets cause later complications during unwind */</span>
+<span class="cs">+ if (offset > buffer->data_size || read_size < sizeof(*hdr) ||
++     !IS_ALIGNED(offset, sizeof(u32)))</span>
+      return 0;</pre>
+    </div>
+    <div class="cb-note">The commit message notes that this check existed before commit 7a67a39320df ("binder: add function to copy binder object from buffer") and was removed at the time because it was redundant given how objects were being accessed. It became necessary again when the access pattern changed. The lesson is that validation and access patterns must be considered together - changing one without auditing the other can silently remove protection.</div>
+
+    <h3 class="ssh">CVE-2024-46740 - Raw data copy lacks a bounds check</h3>
+
+    <p>During transaction processing, binder_transaction() copies raw data between embedded Binder objects by walking from one object offset to the next. If the raw data between two objects extends beyond the data section boundary, the copy overwrites the offsets section that the outer loop is still reading. This corrupts the offsets mid-iteration, causing the error unwind path to process garbage offsets and decrement refcounts on the wrong - or already freed - nodes.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder.c</div>
+            <div class="cb-lines">Commit 4df153652cc4 - CVE-2024-46740</div>
+        </div>
+        <pre><span class="cm">/* copy_size is the raw data between the previous object and this one */</span>
+copy_size = object_offset - user_offset;
+<span class="cm">/* Before: only checked that user_offset <= object_offset */</span>
+<span class="cr">- if (copy_size && (user_offset > object_offset ||</span>
+<span class="cm">/* After: also check object_offset is within data_size before copying */</span>
+<span class="cs">+ if (copy_size && (user_offset > object_offset ||
++     object_offset > tr->data_size ||</span>
+      binder_alloc_copy_user_to_buffer(...)))</pre>
+    </div>
+    <div class="cb-note">The KASAN report in the commit message shows the consequence: _raw_spin_lock() faulting on a slab-use-after-free because a node whose refcount was decremented via a corrupted offset had already been freed. The fix is a single line - add object_offset > tr->data_size to the existing bounds check - but the consequence of the missing check was a UAF reachable through normal transaction processing. Adding bounds validation at the copy site is the canonical prevention for this class of error.</div>
+
+    <div class="ann">
+        <strong>Engineering Lesson - 2024 (Validation):</strong> Validation requirements and data access patterns drift apart over time as code evolves. A check that was implicit in one implementation becomes missing when the implementation changes. The 2024 validation fixes share a common pattern: a previous refactoring removed a check that had been performing implicit validation, and the replacement code did not include an equivalent explicit check. Validation should be co-located with the data it validates rather than relying on downstream code to enforce alignment or bounds.
+    </div>
+
+    <h2 class="sh">Era IV - 2024: Freeze notifications introduce new lifetime relationships</h2>
+
+    <p>The freeze notification feature (introduced by commit d579b04a52a1) added the ability for one process to receive a notification when a Binder process it holds a reference to is frozen. This added a new asynchronous work type - BINDER_WORK_FREEZE / BINDER_WORK_CLEAR_FREEZE_NOTIFICATION - and a new ref->freeze pointer alongside the existing ref->death pointer. Three separate bugs followed from lifetime assumptions that the new feature did not fully account for.</p>
+
+    <h3 class="ssh">CVE-2024-56556 - Node UAF in binder_add_freeze_work()</h3>
+
+    <p>binder_add_freeze_work() iterates over proc->nodes to queue freeze notifications for every node in a process being frozen. The iteration drops inner_lock to acquire node->lock (required by the lock ordering described in Section 2). During that window - after dropping inner_lock, before acquiring node->lock - binder_node_release() can free the node. The fix applies the same pattern used throughout the driver: increment tmp_refs before dropping the lock.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder.c</div>
+            <div class="cb-lines">Commit dc8aea47b928 - CVE-2024-56556</div>
+        </div>
+        <pre>while ((n = rb_next(n))) {
+    struct binder_node *node = rb_entry(n, struct binder_node, rb_node);
+<span class="cm">    /* Fix: hold node alive before dropping inner_lock */</span>
+<span class="cs">+   binder_inc_node_tmpref_ilocked(node);</span>
+    binder_inner_proc_unlock(proc);     <span class="cm">/* DROP inner_lock */</span>
+<span class="cs">+   if (prev)
++       binder_put_node(prev);          /* release previous node */</span>
+    binder_node_lock(node);             <span class="cm">/* safe to acquire node->lock */</span>
+    <span class="cm">/* ... queue freeze work for all refs to this node ... */</span>
+    binder_node_unlock(node);
+    binder_inner_proc_lock(proc);       <span class="cm">/* REACQUIRE inner_lock */</span>
+}
+binder_inner_proc_unlock(proc);
+<span class="cs">+ if (prev)
++     binder_put_node(prev);            /* release final node */</span></pre>
+    </div>
+    <div class="cb-note">This is the identical pattern to the one in binder_deferred_release() - the unlock/relock-under-iteration discipline explained in Section 2. The freeze iteration code was new and missed the tmpref increment that all similar iteration patterns in the driver already include. The fix also introduces a prev pointer to hold the tmpref across the iteration, releasing the previous node at the start of the next iteration rather than immediately after use.</div>
+
+    <h3 class="ssh">CVE-2024-56554 - Freeze work not removed when cleaning up a binder_ref</h3>
+
+    <p>When a binder_ref is cleaned up via binder_cleanup_ref_olocked(), the function removes the associated death notification work if one is registered (ref->death). The freeze notification feature added ref->freeze alongside ref->death, but binder_cleanup_ref_olocked() was not updated to also remove ref->freeze->work. When the ref is freed with its freeze work still queued in proc->work, binder_release_work() later accesses a freed ref structure.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder.c</div>
+            <div class="cb-lines">Commit 7e20434cbca8 - CVE-2024-56554</div>
+        </div>
+        <pre>static void binder_cleanup_ref_olocked(struct binder_ref *ref) {
+    if (ref->death) {
+        binder_dequeue_work(ref->proc, &ref->death->work);
+        binder_stats_deleted(BINDER_STAT_DEATH);
+    }
+<span class="cm">    /* Fix: freeze work must also be dequeued before ref is freed */</span>
+<span class="cs">+   if (ref->freeze) {
++       binder_dequeue_work(ref->proc, &ref->freeze->work);
++       binder_stats_deleted(BINDER_STAT_FREEZE);
++   }</span>
+    binder_stats_deleted(BINDER_STAT_REF);
+}</pre>
+    </div>
+    <div class="cb-note">This is a straightforward parity failure: the cleanup function handled death notifications but was not updated to handle freeze notifications when the latter was added. The pattern of updating cleanup functions when new parallel state is introduced is a recurring requirement in Binder - every time a new work type is added, every cleanup path that handles related work must be audited to ensure it handles the new type as well.</div>
+
+    <h3 class="ssh">CVE-2024-56553 - Delivered freeze notifications not freed on process exit</h3>
+
+    <p>A third freeze-related fix addresses a memory leak in binder_deferred_release(). When a process exits, binder_deferred_release() calls binder_release_work() on proc->todo and proc->delivered_death. The freeze feature added proc->delivered_freeze, but the deferred release function was not updated to also release that list. Any pending entries in delivered_freeze are leaked when the process exits.</p>
+
+    <div class="cb">
+        <div class="cb-top">
+            <div class="cb-file">drivers/android/binder.c</div>
+            <div class="cb-lines">Commit 1db76ec2b4b2 - CVE-2024-56553</div>
+        </div>
+        <pre>static void binder_deferred_release(struct binder_proc *proc) {
+    <span class="cm">/* ... cleanup threads, nodes, refs ... */</span>
+    binder_release_work(proc, &proc->todo);
+    binder_release_work(proc, &proc->delivered_death);
+<span class="cs">+   binder_release_work(proc, &proc->delivered_freeze);</span>
+}</pre>
+    </div>
+    <div class="cb-note">Also required: adding BINDER_WORK_CLEAR_FREEZE_NOTIFICATION to the switch statement inside binder_release_work() so that freeze work items are correctly freed rather than falling through to the default error case. Each new work type requires both a release path and handling in every function that processes the work queue.</div>
+
+    <div class="ann">
+        <strong>Engineering Lesson - 2024 (Freeze):</strong> Adding asynchronous work to an existing subsystem multiplies the number of places where cleanup must happen. The freeze notification feature introduced ref->freeze alongside ref->death, and proc->delivered_freeze alongside proc->delivered_death. Every existing cleanup function that handled death notifications needed a parallel update to handle freeze notifications. Three separate CVEs from a single feature addition illustrates what happens when a new asynchronous lifetime relationship is not fully propagated to all cleanup paths. The lesson: when adding new work types, audit every cleanup function that touches the related structures.
+    </div>
+
+    <div class="pnav">
+        <span class="pnav-text">Looking across all four eras, the same five engineering principles appear repeatedly. The final page of this section names them explicitly and explains why Binder keeps returning to the same ground.</span>
+        <button class="pnav-btn" onclick="go('s3c')">Next: Recurring Engineering Principles</button>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- S3C: RECURRING ENGINEERING PRINCIPLES -->
+<!-- ============================================================ -->
+<div class="page" id="page-s3c">
+    <div class="kicker">Section 03c / 1:20 to 1:30</div>
+    <h1 class="pt">Recurring Engineering Principles</h1>
+    <p class="dek">Reading Binder's patch history as a whole, five principles appear again and again - not as rules that were always followed, but as lessons that were learned each time they were violated. Understanding these principles is what lets you read new Binder code and immediately know where to look for gaps.</p>
+
+    <h2 class="sh">Principle 1 - Ownership must be explicit</h2>
+
+    <p>In a subsystem where objects cross process boundaries and outlive the processes that created them, ownership cannot be inferred from context. It must be declared. Binder learned this progressively: first for binder_node (which can outlive its owning proc when other processes still hold refs), then for binder_thread (which must survive an ioctl in progress even if the thread calls BINDER_THREAD_EXIT), then for binder_proc (which must survive cleanup on the workqueue even while concurrent transactions decrement its refcount).</p>
+
+    <p>The mechanism Binder uses is tmp_refs - a counter that any code path increments before dropping the protecting lock and decrements when it is done with the object. The naming convention (binder_inc_node_tmpref_ilocked, binder_put_node, binder_proc_dec_tmpref) makes ownership transfers explicit in the function call itself.</p>
+
+    <div class="lrule">
+        <div class="lk">binder_inc_node_tmpref_ilocked(node)</div>
+        <div class="lv">-- caller now owns a temporary reference to this node</div>
+        <div class="lk">binder_put_node(node)</div>
+        <div class="lv">-- releases temporary reference, may free node</div>
+        <div class="lk">binder_proc_dec_tmpref(proc)</div>
+        <div class="lv">-- releases temporary reference, may free proc if is_dead and threads empty</div>
+        <div class="lk">binder_thread_dec_tmpref(thread)</div>
+        <div class="lv">-- releases temporary reference to a binder_thread</div>
+    </div>
+
+    <p>The 2019 period dramatically extended the scope of this discipline. The 2024 freeze fixes showed it still needs to be applied to every new iteration pattern - binder_add_freeze_work() missed it on first implementation.</p>
+
+    <h2 class="sh">Principle 2 - Lifetime extends until all users are done, not until the owner is done</h2>
+
+    <p>A binder_node is not freed when its owning proc exits. It is freed when its owning proc exits AND no other binder_ref in any other process still points to it. A binder_proc is not freed when its /dev/binder fd is closed. It is freed when that fd is closed AND no in-flight transaction holds a pointer to it AND its tmp_ref reaches zero.</p>
+
+    <p>This distinction - between the owner's lifetime and the object's lifetime - is what makes Binder's cleanup code complex. binder_node_release() captures it directly: if the node still has external refs when its proc dies, it is moved to the binder_dead_nodes list rather than freed, and death notifications are queued for every process that holds a ref. The node's memory is not reclaimed until the last ref drops.</p>
+
+    <div class="diag">
+        <div class="diag-lbl">binder_node lifetime - owner death does not equal object death</div>
+        <div class="flow">
+            <div class="fn hot">Owning proc calls close(/dev/binder)</div>
+            <div class="fa">|  binder_deferred_release() runs on workqueue</div>
+            <div class="fn">binder_node_release() called for each node</div>
+            <div class="fa">|  Is node->refs empty AND tmp_refs == 1?</div>
+            <div class="fn safe">Yes: binder_free_node() -- memory reclaimed now</div>
+            <div class="fn">No: node->proc = NULL, move to binder_dead_nodes</div>
+            <div class="fa">|  Death notifications queued for all binder_refs pointing to this node</div>
+            <div class="fn">Each ref holder processes BR_DEAD_BINDER and eventually BC_DEAD_BINDER_DONE</div>
+            <div class="fa">|  Each ref released via binder_dec_ref_olocked()</div>
+            <div class="fn safe">When last ref is released: binder_put_node() -- memory reclaimed</div>
+        </div>
+    </div>
+
+    <p>The VMA lifetime bugs from 2023 are a different manifestation of the same principle. Binder's allocator cached alloc->vma because it assumed the VMA's lifetime was tied to the process lifetime. When the MM subsystem changed so that a VMA could be freed while only a read lock was held, that assumption became a UAF. The fix - vma_lookup() instead of cached pointer, or write lock to serialize with munmap() - extends the effective protected lifetime of the VMA to match what the code actually needed.</p>
+
+    <h2 class="sh">Principle 3 - Synchronization must cover the entire lifetime window, not just the access</h2>
+
+    <p>A lock that protects an access does not protect the pointer to the object being accessed. The outer_lock protects proc->refs_by_desc, meaning it serializes insertions and removals from the ref rbtree. But once a binder_ref pointer is loaded from the tree, the outer_lock can be dropped - and at that point, the node the ref points to is protected only by the ref's own existence (via node->refs hlist) and by the tmp_refs discipline.</p>
+
+    <p>This is the "lifetime window" problem: there is a gap between loading a pointer (under the lock) and using what the pointer points to (without the lock). Any bug that involves accessing data between those two points requires the code to hold a reference that extends the pointed-to object's lifetime across that gap - not just hold the lock at the moment of access.</p>
+
+    <p>The mmput() vs do_exit() race (CVE-2023-52609) is a synchronization lifetime window bug: mmget_not_zero() extended the mm's refcount, but the cleanup work triggered by the final mmput() ran on the wrong thread at the wrong time. Replacing mmput() with mmput_async() moved the cleanup to a context that does not block on the waiting thread's schedule.</p>
+
+    <h2 class="sh">Principle 4 - Validation belongs at the boundary, not downstream</h2>
+
+    <p>Both validation fixes from 2024 share the same structural problem: a check that was performing validation was removed as part of a refactoring, and the replacement code did not include an equivalent explicit check. In both cases, the absence of the check was not immediately obvious because the code "worked" for well-formed inputs - the bug only manifested when an adversarial input was constructed to trigger the specific missing boundary.</p>
+
+    <p>The offset alignment check in binder_get_object() (CVE-2024-26926) had been present before commit 7a67a39320df and was noted in the commit message as "likely removed due to redundancy at the time." The bounds check on the raw data copy (CVE-2024-46740) was never present - it was a gap left by the original implementation of binder_transaction()'s object loop that only surfaced when the error path was triggered by a specific combination of object offsets and raw data sizes.</p>
+
+    <div class="ann">
+        <strong>The pattern:</strong> validation that is implicit in one version of the code becomes a gap when the code changes. This applies directly to the offset loop in binder_transaction() that Section 2 walked through. Every field in that loop that comes from userspace - hdr->type, object_offset, off_start_offset, off_end_offset, copy_size - is a boundary. Validation at the point where each field is first read prevents downstream code from operating on values it was not designed to handle.
+    </div>
+
+    <h2 class="sh">Principle 5 - Cleanup ordering must be complete and symmetric</h2>
+
+    <p>For every initialization path, there must be a corresponding cleanup path, and every cleanup path must handle every state that the initialization path can produce. This sounds obvious but consistently proves difficult in practice when features are added incrementally.</p>
+
+    <p>The freeze notification bugs (CVE-2024-56553, CVE-2024-56554) are both cleanup ordering failures. Adding ref->freeze required updating binder_cleanup_ref_olocked() to dequeue ref->freeze->work, just as it already dequeued ref->death->work. Adding proc->delivered_freeze required updating binder_deferred_release() to call binder_release_work() on that list, just as it already did for proc->delivered_death. Adding BINDER_WORK_CLEAR_FREEZE_NOTIFICATION required updating binder_release_work()'s switch statement to handle the new work type.</p>
+
+    <p>Each of these was a separate omission. Each produced a separate CVE. The pattern suggests that the right engineering practice when adding new parallel state (a new work type, a new ref field, a new proc list) is to audit every function that handles the existing parallel state and ask explicitly whether it needs to be updated for the new state as well.</p>
+
+    <table class="bt">
+        <tr>
+            <th>Added in d579b04a52a1</th>
+            <th>Required update to</th>
+            <th>Actually updated?</th>
+        </tr>
+        <tr>
+            <td>ref->freeze pointer</td>
+            <td>binder_cleanup_ref_olocked()</td>
+            <td>No -- fixed by CVE-2024-56554</td>
+        </tr>
+        <tr>
+            <td>proc->delivered_freeze list</td>
+            <td>binder_deferred_release()</td>
+            <td>No -- fixed by CVE-2024-56553</td>
+        </tr>
+        <tr>
+            <td>BINDER_WORK_CLEAR_FREEZE_NOTIFICATION type</td>
+            <td>binder_release_work() switch statement</td>
+            <td>No -- fixed together with CVE-2024-56553</td>
+        </tr>
+        <tr>
+            <td>freeze iteration in binder_add_freeze_work()</td>
+            <td>tmp_ref discipline (same as all other node iterations)</td>
+            <td>No -- fixed by CVE-2024-56556</td>
+        </tr>
+    </table>
+
+    <h2 class="sh">Binder Today</h2>
+
+    <p>The binder.c you read in Section 2 - the 6,642-line file cited at the top of this booklet - is not the driver that shipped in 2008. It is the result of more than a decade of incremental corrections, each one responding to a concrete failure and each one extending the driver's understanding of what "correct lifetime management" requires.</p>
+
+    <p>The locking model in the header comment, the tmpref discipline, the mmap_write_lock() in binder_update_page_range(), the IS_ALIGNED check in binder_get_object(), the binder_put_node(prev) pattern in binder_add_freeze_work() - none of these were in the original design. They were added one at a time as the system encountered inputs and schedules that the original model did not anticipate.</p>
+
+    <p>This has two implications for what comes next in this session. First, the driver you are about to fuzz is substantially hardened relative to where it started - but hardening is not the same as completeness. Second, understanding why each hardening measure exists, and what invariant it maintains, is what separates a fuzzer that finds crashes from a researcher who understands what the crashes mean.</p>
+
+    <div class="pull">Modern Binder reflects more than a decade of incremental refinement. Every invariant in the code exists because something once broke without it. Knowing which invariant a given function is enforcing is the difference between reading code and understanding it.</div>
+            <div class="pnav">
+        <span class="pnav-text">That's the full internals and attack-surface picture. The remaining section walks through the fuzzing workflow itself - execution, coverage-guided exploration, and reading the output.</span>
+        <button class="pnav-btn" onclick="go('demo-intro')">Next: Fuzzing Demonstrations</button>
+    </div>
+</div>
+            <!-- end page-s3c -->
+            <!-- SECTION 04 -->
+<div class="page" id="page-demo-intro">
+
+    <div class="kicker">
+
+        Section 04
+
+    </div>
+
+    <h1 class="pt">
+
+        Why Fuzz Binder?
+
+    </h1>
+
+    <p class="dek">
+
+        Up to this point we have studied Binder from the perspective of the kernel
+        developer and security researcher. We now understand how transactions are
+        created, how objects are translated, how references are managed, and where
+        the driver's most security-sensitive code paths exist.
+
+        The natural question is therefore: <strong>How do we systematically explore
+        all of those code paths?</strong>
+
+        The answer is fuzzing.
+
+    </p>
+
+    <h2 class="sh">
+
+        What Is Fuzzing?
+
+    </h2>
+
+    <p>
+
+        Fuzzing is an automated software testing technique that repeatedly executes a
+        target using large numbers of generated inputs in an attempt to discover
+        unexpected behaviour.
+
+        Rather than manually constructing every possible Binder transaction, a
+        fuzzer continuously creates new inputs, executes them, observes the result,
+        and repeats the process thousands or even millions of times.
+
+        If one particular input exposes an unexpected condition-such as a crash,
+        memory corruption, failed assertion, or kernel warning-the input is saved
+        for further investigation.
+
+    </p>
+
+    <div class="pull">
+
+        Instead of asking "Can I think of an input that breaks Binder?",
+
+        fuzzing asks,
+
+        "Can the computer generate millions of inputs faster than I ever could?"
+
+    </div>
+
+    <h2 class="sh">
+
+        Why Fuzz Binder?
+
+    </h2>
+
+    <p>
+
+        Binder is one of Android's largest and most exposed kernel attack surfaces.
+
+        Every application communicates with system services through the Binder
+        driver, meaning an enormous variety of transaction layouts, object types,
+        handles, file descriptors, and nested IPC interactions are processed every
+        day.
+
+        While the Binder driver enforces numerous validation checks, it must also
+        process attacker-controlled data originating from unprivileged applications.
+
+        This combination of complexity, reachability, and trusted execution makes
+        Binder an excellent target for automated testing.
+
+    </p>
+
+    <ul class="sl">
+
+        <li>Large and complex parsing logic.</li>
+
+        <li>Numerous object types and transaction layouts.</li>
+
+        <li>Heavy use of locking, reference counting, and lifetime management.</li>
+
+        <li>Directly reachable from unprivileged applications.</li>
+
+        <li>Historically responsible for multiple kernel vulnerabilities.</li>
+
+    </ul>
+
+    <h2 class="sh">
+
+        Types of Fuzzing
+
+    </h2>
+
+    <table class="bt">
+
+        <tr>
+
+            <th>Approach</th>
+
+            <th>Description</th>
+
+        </tr>
+
+        <tr>
+
+            <td class="mm">Black-box</td>
+
+            <td>
+
+                Generates inputs without any knowledge of the program's internal
+                behaviour. The fuzzer observes only whether execution succeeds,
+                fails, or crashes.
+
+            </td>
+
+        </tr>
+
+        <tr>
+
+            <td class="mm">White-box</td>
+
+            <td>
+
+                Uses information about the program itself, such as symbolic
+                execution or constraint solving, to generate inputs capable of
+                reaching difficult execution paths.
+
+            </td>
+
+        </tr>
+
+        <tr>
+
+            <td class="mm">Grey-box</td>
+
+            <td>
+
+                Combines automated input generation with lightweight execution
+                feedback, allowing the fuzzer to prioritize inputs that explore new
+                portions of the program.
+
+            </td>
+
+        </tr>
+
+    </table>
+
+    <h2 class="sh">
+
+        Why Coverage-Guided Fuzzing?
+
+    </h2>
+
+    <p>
+
+        Modern kernel fuzzers are typically coverage-guided grey-box fuzzers.
+
+        Instead of generating completely random inputs forever, they continuously
+        measure which portions of the target have already been executed and then
+        prioritize inputs that expand execution into previously unseen code.
+
+        This allows the fuzzer to gradually explore increasingly complex execution
+        paths instead of repeatedly exercising the same code.
+
+    </p>
+
+    <div class="diag">
+
+        <div class="diag-lbl">
+
+            Conceptual Workflow
+
+        </div>
+
+        <div class="flow">
+
+            <div class="fn">
+
+                Generate Input
+
+            </div>
+
+            <div class="fa">
+
+                ↓
+
+            </div>
+
+            <div class="fn">
+
+                Execute Target
+
+            </div>
+
+            <div class="fa">
+
+                ↓
+
+            </div>
+
+            <div class="fn">
+
+                Observe Behaviour
+
+            </div>
+
+            <div class="fa">
+
+                ↓
+
+            </div>
+
+            <div class="fn hot">
+
+                Discover New Execution?
+
+            </div>
+
+            <div class="fa">
+
+                ↓
+
+            </div>
+
+            <div class="fn safe">
+
+                Keep & Improve Interesting Inputs
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <p>
+
+        The remainder of this section explains how this feedback-driven approach is
+        applied specifically to the Binder driver before we observe it operating on
+        a real Android kernel.
+
+    </p>
+
+    <div class="pnav">
+
+        <span class="pnav-text">
+
+            Having established why Binder is an attractive fuzzing target and why
+            coverage-guided fuzzing has become the dominant approach, we can now
+            examine how this technique is applied to Binder in practice.
+
+        </span>
+
+        <button class="pnav-btn" onclick="go('demo1')">
+
+            Next: How Coverage-Guided Binder Fuzzing Works
+
+        </button>
+
+    </div>
+
+</div><!-- end page-demo-intro -->
+<div class="page" id="page-demo1">
+
+    <div class="kicker">
+        Section 04a
+    </div>
+
+    <h1 class="pt">
+        How Coverage-Guided Binder Fuzzing Works
+    </h1>
+
+ <p class="dek">
+        Coverage-guided fuzzing transforms the Binder driver from a black box into a measurable state space. 
+        By leveraging KCOV and structured syscall descriptions, we can systematically explore 
+        the deepest reaches of <strong>binder.c</strong>, mapping execution paths that would 
+        otherwise remain unreachable to random input.
+    </p>
+
+    
+
+    <h2 class="sh">1. The Necessity of Structure: Why Not Random Bytes?</h2>
+    <p>
+        The Binder driver, accessed via <code>ioctl(BINDER_WRITE_READ)</code>, is strictly typed. 
+        It expects a specific union of commands (<code>BC_TRANSACTION</code>, <code>BC_FREE_BUFFER</code>, etc.) 
+        coupled with a complex hierarchy of <code>binder_transaction_data</code> objects.
+        <br><br>
+        If a fuzzer sends random bytes, the kernel's validation logic-specifically 
+        <code>binder_transaction()</code>-will fail during the initial copy-from-user or 
+        offset-array validation. Random fuzzing hits a "validation wall." Syzkaller bypasses this 
+        by using <strong>syzlang</strong> descriptions. These definitions map the exact ABI 
+        of Binder, allowing the fuzzer to generate valid <code>binder_object</code> layouts, 
+        correct handle types, and properly aligned offset arrays.
+    </p>
+
+    <h2 class="sh">2. The Instrumentation Engine: How KCOV Works</h2>
+    <p>
+        KCOV provides the "eyes" for the fuzzer. When the kernel is compiled with 
+        <code>CONFIG_KCOV=y</code>, the compiler injects a callback at the entry of every 
+        basic block. During the execution of a Binder program, the <code>executor</code> 
+        maps a shared memory region where the kernel writes the address of every executed block.
+    </p>
+    
+    
+
+    <h2 class="sh">3. Corpus Evolution and Mutation Strategy</h2>
+    <p>
+        The corpus is not just a pile of data; it is an evolutionary library.
+        <ul>
+            <li><strong>Splice:</strong> Combining two successful transactions to create a complex chain.</li>
+            <li><strong>Insert/Delete:</strong> Testing the driver's handling of missing or out-of-order commands.</li>
+            <li><strong>Argument Mutation:</strong> Flipping flags like <code>TF_ONE_WAY</code> or 
+            modifying <code>buffer_size</code> to trigger allocation errors or boundary overflows.</li>
+        </ul>
+        A program is "retained" if, and only if, it covers a new edge in the Control Flow Graph (CFG) 
+        of <code>binder.c</code>. This ensures the fuzzer is constantly pushing deeper into 
+        error-handling paths and complex object translation routines.
+    </p>
+
+    <h2 class="sh">4. Binder-Specific Evolution</h2>
+    <p>
+        Binder's complexity arises from its ability to handle nested transactions and object translation. 
+        When <code>binder_translate_fd()</code> is called, the driver modifies the caller's 
+        file descriptor table. The fuzzer evolves by:
+        <br>
+        1. Establishing a base transaction.
+        <br>
+        2. Adding nested objects that require reference counting.
+        <br>
+        3. Attempting to trigger <code>binder_cleanup_transaction()</code> while objects are in flight.
+        <br>
+        This creates "descendant" transactions-single initial triggers that cascade into 
+        thousands of interactions within the kernel.
+    </p>
+
+    
+
+    <h2 class="sh">5. Crash Discovery and Minimization</h2>
+    <p>
+        Once a crash occurs (detected by KASAN/UBSAN), Syzkaller triggers the <strong>minimization 
+        loop</strong>. It attempts to remove every single command from the crashing program 
+        one by one. If the crash persists, the command is removed permanently. This reduces 
+        a massive, thousand-line syscall log down to a 5-line C reproducer, enabling 
+        the high-fidelity root cause analysis required for CVE-level discoveries.
+    </p>
+
+    <table class="bt">
+        <tr>
+            <th>Kernel Component</th>
+            <th>Fuzzer Interaction Point</th>
+        </tr>
+        <tr>
+            <td class="mm">binder_ioctl()</td>
+            <td>The entry point for all fuzzer-generated commands.</td>
+        </tr>
+        <tr>
+            <td class="mm">binder_thread_write()</td>
+            <td>Processes the command queue generated by the fuzzer.</td>
+        </tr>
+        <tr>
+            <td class="mm">binder_transaction()</td>
+            <td>Where the bulk of object and handle validation occurs.</td>
+        </tr>
+        <tr>
+            <td class="mm">binder_translate_fd()</td>
+            <td>The critical path for FD-based exploitation/bugs.</td>
+        </tr>
+    </table>
+
+    <h2 class="sh">Mental Model: The Dark Maze</h2>
+    <p>
+        Visualize <strong>binder.c</strong> as a labyrinth. Random fuzzing is like spinning in 
+        place; you might hit the same wall a million times. Coverage-guided fuzzing leaves a 
+        trail of breadcrumbs (the KCOV bitmap). When you find a new path, you don't start 
+        from the entrance-you start from that new junction. 
+        <br><br>
+        By constantly saving programs that push the boundary, the fuzzer eventually finds the 
+        "hidden doors" (vulnerabilities) that require precise, complex sequences of state 
+        manipulation to unlock.
+    </p>
+
+    <div class="pull">
+        The ultimate goal is to evolve the corpus until the fuzzer consistently reaches 
+        the most dangerous, rarely-executed cleanup and error paths in the driver.
+    </div>
+
+    <h2 class="sh">
+        The Complete Feedback Loop
+    </h2>
+
+    <div class="diag">
+
+        <div class="diag-lbl">
+            Coverage-Guided Binder Fuzzing
+        </div>
+
+        <div class="flow">
+
+            <div class="fn">
+                Generate Binder Program
+            </div>
+
+            <div class="fa">↓</div>
+
+            <div class="fn">
+                Execute ioctl(BINDER_WRITE_READ)
+            </div>
+
+            <div class="fa">↓</div>
+
+            <div class="fn">
+                binder_ioctl()
+            </div>
+
+            <div class="fa">↓</div>
+
+            <div class="fn hot">
+                binder_transaction()
+            </div>
+
+            <div class="fa">↓</div>
+
+            <div class="fn">
+                KCOV Records Executed Basic Blocks
+            </div>
+
+            <div class="fa">↓</div>
+
+            <div class="fn safe">
+                New Coverage?
+            </div>
+
+            <div class="fa">
+                ↓ YES
+            </div>
+
+            <div class="fn hot">
+                Save Program → Mutate → Execute Again
+            </div>
+
+            <div class="fa">
+                ↓ NO
+            </div>
+
+            <div class="fn danger">
+                Discard Program
+            </div>
+
+        </div>
+
+    </div>
+
+    <h2 class="sh">
+        What Is Being Mutated?
+    </h2>
+
+    <table class="bt">
+
+        <tr>
+            <th>Binder Input</th>
+            <th>Purpose</th>
+        </tr>
+
+        <tr>
+            <td class="mm">Binder Commands</td>
+            <td>Reach different driver entry paths.</td>
+        </tr>
+
+        <tr>
+            <td class="mm">Transaction Flags</td>
+            <td>Trigger alternate execution branches.</td>
+        </tr>
+
+        <tr>
+            <td class="mm">Handles</td>
+            <td>Exercise binder_ref lookups.</td>
+        </tr>
+
+        <tr>
+            <td class="mm">Binder Objects</td>
+            <td>Reach object translation routines.</td>
+        </tr>
+
+        <tr>
+            <td class="mm">Offsets Array</td>
+            <td>Stress Binder object parsing.</td>
+        </tr>
+
+        <tr>
+            <td class="mm">Buffer Sizes</td>
+            <td>Exercise allocation and validation logic.</td>
+        </tr>
+
+        <tr>
+            <td class="mm">File Descriptors</td>
+            <td>Reach binder_translate_fd().</td>
+        </tr>
+
+    </table>
+
+    <h2 class="sh">
+        Why Coverage Matters
+    </h2>
+
+    <p>
+
+        Executing one million Binder transactions is meaningless if every transaction
+        follows the same code path.
+
+        Coverage-guided fuzzing continuously searches for inputs that force execution
+        into new branches, new error paths, new object translation routines,
+        and rarely exercised cleanup logic.
+
+        Every newly discovered basic block becomes another starting point from which
+        the fuzzer can continue exploring deeper into the Binder driver.
+
+    </p>
+
+    <div class="pull">
+
+        The objective is not to generate random Binder transactions.
+
+        The objective is to continuously discover execution paths that no previous
+        input has reached.
+
+    </div>
+
+    <h2 class="sh">
+        Mental Model
+    </h2>
+
+    <div class="diag">
+
+        <div class="diag-lbl">
+            Corpus Evolution
+        </div>
+
+        <div class="flow">
+
+            <div class="fn">
+                Initial Binder Programs
+            </div>
+
+            <div class="fa">↓ mutate</div>
+
+            <div class="fn">
+                Execute Inside Kernel
+            </div>
+
+            <div class="fa">↓ compare KCOV coverage</div>
+
+            <div class="fn hot">
+                New Code Executed?
+            </div>
+
+            <div class="fa">
+                ↙ YES                         NO ↘
+            </div>
+
+            <div class="flow-row">
+
+                <div class="fn safe">
+                    Add To Corpus
+                </div>
+
+                <div class="fa-h">
+                    │
+                </div>
+
+                <div class="fn danger">
+                    Discard
+                </div>
+
+            </div>
+
+            <div class="fa">↓</div>
+
+            <div class="fn">
+                Repeat Thousands of Times
+            </div>
+
+        </div>
+
+    </div>
+
+    <h2 class="sh">
+        Result
+    </h2>
+
+    <ul class="sl">
+
+        <li>Automatically discovers deeper Binder execution paths.</li>
+
+        <li>Exercises uncommon error-handling code.</li>
+
+        <li>Explores thousands of object combinations.</li>
+
+        <li>Stresses lifetime management, locking and reference counting.</li>
+
+        <li>Produces reproducible Binder programs whenever a crash occurs.</li>
+
+    </ul>
+
+    <div class="pnav">
+
+        <span class="pnav-text">
+
+            Now that we understand how coverage-guided fuzzing searches the Binder
+            attack surface, we can observe the process in practice using a recorded
+            Syzkaller execution.
+
+        </span>
+
+        <button class="pnav-btn" onclick="go('demo2')">
+
+            Next: Recorded Binder Fuzzing
+
+        </button>
+
+    </div>
+            </div>
+            <div class="page" id="page-demo2">
+
+                <div class="kicker">
+
+                    Section 04b
+
+                </div>
+
+                <h1 class="pt">
+
+                    Coverage-Guided Exploration
+
+                </h1>
+
+                <video controls width="100%">
+
+                    <source src="FUZZ.mp4">
+
+                </video>
+
+                <p class="caption">
+
+                    Watch how coverage information evolves as the fuzzer explores additional
+                    execution paths inside the Binder subsystem.
+
+                </p>
+<div class="pnav">
+    <span class="pnav-text">Now interpreting what the fuzzer actually produced.</span>
+    <button class="pnav-btn" onclick="go('demo3')">Next: Understanding Fuzzer Output</button>
+</div>
+</div>
+            <div class="page" id="page-demo3">
+
+                <div class="kicker">
+
+                    Section 04c
+
+                </div>
+
+                <h1 class="pt">
+
+                    Understanding Fuzzer Output
+
+                </h1>
+                    <tr>
+
+                        <th>Observation</th>
+
+                        <th>Why It Matters</th>
+
+                    </tr>
+
+                    <tr>
+
+                        <td>
+
+                            Execution Count
+
+                        </td>
+
+                        <td>
+
+                            Indicates overall fuzzing throughput.
+
+                        </td>
+
+                    </tr>
+
+                    <tr>
+
+                        <td>
+
+                            Coverage
+
+                        </td>
+
+                        <td>
+
+                            Shows which Binder code paths are exercised.
+
+                        </td>
+
+                    </tr>
+
+                    <tr>
+
+                        <td>
+
+                            Corpus
+
+                        </td>
+
+                        <td>
+
+                            Interesting transactions retained for future mutations.
+
+                        </td>
+
+                    </tr>
+
+                    <tr>
+
+                        <td>
+
+                            Kernel Logs
+
+                        </td>
+
+                        <td>
+
+                            Useful for understanding runtime behaviour during fuzzing.
+
+                        </td>
+
+                    </tr>
+
+                </table>
+
+                <h2 class="sh">Kernel Logs - What a Real Binder Crash Looks Like</h2>
+                <p class="dek">This session's run did not produce a crash. The two artifacts below are from real, patched Binder CVEs, shown to illustrate what fuzzer-triggered kernel logs actually look like when a bug is hit. Not from this recording.</p>
+
+                <h3 class="ssh">CVE-2024-56556 - UAF in binder_add_freeze_work() (KASAN)</h3>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">dmesg - KASAN report</div>
+                        <div class="cb-lines">slab-use-after-free</div>
+                    </div>
+                    <pre>==================================================================
+BUG: KASAN: slab-use-after-free in _raw_spin_lock+0xe4/0x19c
+Write of size 4 at addr ffff53c04c29dd04 by task freeze/640
+
+CPU: 5 UID: 0 PID: 640 Comm: freeze Not tainted 6.11.0-07343-ga727812a8d45 #17
+Hardware name: linux,dummy-virt (DT)
+Call trace:
+ _raw_spin_lock+0xe4/0x19c
+ binder_add_freeze_work+0x148/0x478
+ binder_ioctl+0x1e70/0x25ac
+ __arm64_sys_ioctl+0x124/0x190
+
+Allocated by task 637:
+ __kmalloc_cache_noprof+0x12c/0x27c
+ binder_new_node+0x50/0x700
+ binder_transaction+0x35ac/0x6f74
+ binder_thread_write+0xfb8/0x42a0
+ binder_ioctl+0x18f0/0x25ac
+ __arm64_sys_ioctl+0x124/0x190
+
+Freed by task 637:
+ kfree+0xf0/0x330
+ binder_thread_read+0x1e88/0x3a68
+ binder_ioctl+0x16d8/0x25ac
+ __arm64_sys_ioctl+0x124/0x190
+==================================================================</pre>
+                </div>
+                <div class="cb-note">This is the exact bug covered in Section 03b - binder_add_freeze_work() iterating proc->nodes, dropping inner_lock to acquire node->lock, without holding a tmpref across the gap. Task 637 frees the node in binder_thread_read() while task 640 (freeze) is still walking toward it in binder_add_freeze_work(). Fixed by commit dc8aea47b928.</div>
+
+                <h3 class="ssh">Unreferenced Object - Freeze Work Leak (kmemleak)</h3>
+                <div class="cb">
+                    <div class="cb-top">
+                        <div class="cb-file">kmemleak report</div>
+                        <div class="cb-lines">memory leak, not a crash</div>
+                    </div>
+                    <pre>unreferenced object 0xffff38e8cfa36180 (size 64):
+  comm "binder-util", pid 655, jiffies 4294936641
+  hex dump (first 32 bytes):
+    b8 e9 9e c8 e8 38 ff ff b8 e9 9e c8 e8 38 ff ff  .....8.......8..
+    0b 00 00 00 00 00 00 00 3c 1f 4b 00 00 00 00 00  ........<.K.....
+  backtrace (crc 95983b32):
+    [<000000000d0582cf>] kmemleak_alloc+0x34/0x40
+    [<000000009c99a513>] __kmalloc_cache_noprof+0x208/0x280
+    [<00000000313b1704>] binder_thread_write+0xdec/0x439c
+    [<000000000cbd33bb>] binder_ioctl+0x1b68/0x22cc
+    [<000000002bbedeeb>] __arm64_sys_ioctl+0x124/0x190
+    [<00000000b439adee>] invoke_syscall+0x6c/0x254
+    [<00000000173558fc>] el0_svc_common.constprop.0+0xac/0x230
+    [<0000000084f72311>] do_el0_svc+0x40/0x58
+    [<000000008b872457>] el0_svc+0x38/0x78
+    [<00000000ee778653>] el0t_64_sync_handler+0x120/0x12c
+    [<00000000a8ec61bf>] el0t_64_sync+0x190/0x194</pre>
+                </div>
+                <div class="cb-note">kmemleak, not KASAN - this is a different detector catching a different bug class. An object allocated in binder_thread_write() is never freed on some path, consistent with the freeze notification cleanup-parity failures covered in Section 03b (CVE-2024-56553/56554) - a new work type added without updating every corresponding cleanup path.</div>
+
+<div class="pnav">
+    <span class="pnav-text">Research outcomes from applying this workflow.</span>
+    <button class="pnav-btn" onclick="go('findings')">Next: Research Findings</button>
+</div>
+           </div>
+<div class="page" id="page-findings">
+    
+    <div class="kicker">
+
+        Section 04d
+
+    </div>
+
+    <h1 class="pt">
+
+        Practical Research Outcomes
+
+    </h1>
+
+    <p class="dek">
+
+        While preparing the material and demonstrations for this webinar, a logical vulnerability was independently discovered within the new Rust Binder driver implementation (<code>drivers/android/binder/allocation.rs</code>). Although another researcher submitted an upstream patch for this exact flaw just two days prior to my planned disclosure, its technical root cause serves as an excellent case study for driver analysis.
+
+    </p>
+
+
+    <table class="bt">
+
+        <tr>
+            <th>Component / Function</th>
+            <th>Status</th>
+        </tr>
+
+        <tr>
+            <td><code>rust_binder</code> - <code>Allocation::drop()</code> Stride Mismatch</td>
+            <td>Independently Discovered • Duplicate Disclosure</td>
+        </tr>
+
+    </table>
+
+    <p class="dek">
+
+        <strong>Technical Root Cause &amp; Mechanics:</strong>
+        <br><br>
+        The flaw lives inside the <code>Drop</code> implementation for <code>Allocation</code>. When freeing an allocation, the driver iterates through an offsets array composed of 64-bit entries (<code>binder_size_t</code>) to clean up underlying binder objects. However, the loop was written using a step size of <code>size_of::&lt;usize&gt;()</code>:
+        <br><br>
+        <code>for i in offsets.step_by(size_of::&lt;usize&gt;()) { ... }</code>
+        <br><br>
+        • <strong>On 64-bit Kernels:</strong> <code>usize</code> matches <code>u64</code>, making the calculation <code>size_of::&lt;u64&gt;()</code>. The loop increments by 8 bytes perfectly, causing zero harm.
+        <br><br>
+        • <strong>On 32-bit Kernels:</strong> <code>usize</code> drops to 4 bytes. This forces the loop to walk the 8-byte entries in narrow 4-byte steps. Instead of cleanly processing an $N$-entry array, the driver steps through it $2N$ times.
+        <br><br>
+        During these shifted iterations, <code>cleanup_object()</code> parses the upper 32 bits of the 64-bit entries. Since these high words are always zero, the driver interprets them as offset 0. It cleans up the object located at offset 0 an extra $N$ times, triggering a reference count over-decrement. 
+        <br><br>
+        This corrupts Binder's structural reference accounting entirely, causing premature strong reference releases (<code>BR_RELEASE</code>). On 32-bit ARM systems, if the over-decrement drops the counter below zero, the driver's internal mitigation catches the underflow and forces a kernel panic: <code>rust_binder: Failure: refcount underflow!</code>.
+
+    </p>
+
+    <p class="caption">
+
+        The fix addresses this by strictly setting the iteration stride to <code>size_of::&lt;u64&gt;()</code> and explicitly narrowing the value via <code>try_into()</code> when performing the read.
+
+    </p>
+</div>
+
+            <div class="page" id="page-summary">
+
+                <div class="kicker">
+
+                    Summary
+
+                </div>
+
+                <h1 class="pt">
+
+                    Key Takeaways
+
+                </h1>
+
+                <ul class="sl">
+
+                    <li>Binder is Android's primary IPC trust boundary.</li>
+
+                    <li>Understanding Binder internals is essential before attempting to fuzz it.</li>
+
+                    <li>Most research begins by identifying assumptions about ownership, state, and synchronization.
+                    </li>
+
+                    <li>Coverage-guided fuzzing systematically exercises those assumptions.</li>
+
+                    <li>Binder research combines architecture knowledge, code reading, and practical experimentation.
+                    </li>
+
+                </ul>
+
+            </div>
+        </div><!-- end .content -->
+
+        <script>
+function go(id) {
+    document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+    document.querySelectorAll('.nav-btn[id]').forEach(function (b) { b.classList.remove('active'); });
+    var pg = document.getElementById('page-' + id);
+    if (pg) pg.classList.add('active');
+    var nb = document.getElementById('nb-' + id);
+    if (nb) nb.classList.add('active');
+    var c = document.getElementById('content');
+    c.scrollLeft = 0;
+    c.scrollTop = 0;
+}
+window.addEventListener('load', function () {
+    document.getElementById('content').scrollLeft = 0;
+});
+</script>
+</body>
+
+</html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MAX3420 USB UDC: Endpoint Index Out-of-Bounds</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 56px 22px;
+}
+
+/* Headings — restrained, research style */
+h1 {
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    margin-bottom: 14px;
+    color: #f2f2f2;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-top: 46px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1f2a36;
+    color: #f0f0f0;
+}
+
+h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 26px;
+    margin-bottom: 8px;
+    color: #d8d8d8;
+}
+
+/* Paragraphs */
+p {
+    margin: 12px 0;
+    color: #cfcfcf;
+}
+
+/* Meta text (lighter, muted) */
+.meta {
+    color: #9aa4ad;
+    font-size: 13px;
+}
+
+/* Links — subtle, not neon */
+a {
+    color: #7fb3ff;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+
+a:hover {
+    border-bottom: 1px solid #7fb3ff;
+}
+
+/* Code styling (Project Zero-like clarity) */
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: #e8e8e8;
+    background: #111823;
+    padding: 2px 5px;
+    border-radius: 4px;
+}
+
+/* Code blocks */
+pre {
+    background: #0f1620;
+    border: 1px solid #1b2633;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d7d7d7;
+    border-radius: 6px;
+}
+
+/* Sections spacing */
+.section {
+    margin-top: 22px;
+}
+
+/* Horizontal rule — very subtle */
+hr {
+    border: none;
+    border-top: 1px solid #1b2633;
+    margin: 34px 0;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin: 6px 0;
+    color: #cfcfcf;
+}
+
+/* Selection (nice touch for “research blog” feel) */
+::selection {
+    background: #1f3a5f;
+    color: #ffffff;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>MAX3420 USB Device Controller: Endpoint Index Out-of-Bounds via wIndex</h1>
+
+<p class="meta">
+MAX3420 USB Device Controller | Linux Kernel USB Subsystem | Endpoint Index Validation Failure | Heap Out-of-Bounds Read/Write via Unvalidated wIndex
+</p>
+
+<div class="section">
+<h2>Overview</h2>
+
+<p>
+The MAX3420 USB Device Controller driver uses the USB SETUP packet field <code>wIndex</code>
+as an index into a fixed-size endpoint array without validating it against the array bounds.
+</p>
+
+<p>
+The derived index is computed as:
+</p>
+
+<pre>
+id = udc->setup.wIndex & USB_ENDPOINT_NUMBER_MASK;
+</pre>
+
+<p>
+where <code>USB_ENDPOINT_NUMBER_MASK = 0x0f</code>, producing values in the range 0–15,
+while the actual endpoint array size is only 4.
+</p>
+</div>
+
+<div class="section">
+<h2>Attack Surface</h2>
+
+<p>
+USB SETUP packets originate from a fully untrusted USB host and are ingested directly from hardware:
+</p>
+
+<pre>
+spi_rd_buf(udc, MAX3420_REG_SUDFIFO, &setup, 8);
+
+udc->setup = setup;
+udc->setup.wIndex = cpu_to_le16(setup.wIndex);
+</pre>
+
+<p>
+No validation is performed on <code>wIndex</code> before it is used in control flow or memory access.
+</p>
+</div>
+
+<div class="section">
+<h2>Vulnerability</h2>
+
+<p>
+Endpoint access occurs directly via:
+</p>
+
+<pre>
+ep = &udc->ep[udc->setup.wIndex & USB_ENDPOINT_NUMBER_MASK];
+</pre>
+
+<p>
+With:
+</p>
+
+<pre>
+struct max3420_ep ep[4];
+</pre>
+
+<p>
+Any value ≥ 4 results in out-of-bounds access.
+</p>
+</div>
+
+<div class="section">
+<h2>Vulnerability 1: max3420_getstatus() OOB Read</h2>
+
+<p>
+The function dereferences an endpoint pointer derived from unvalidated input:
+</p>
+
+<pre>
+ep = &udc->ep[udc->setup.wIndex & USB_ENDPOINT_NUMBER_MASK];
+</pre>
+
+<p>
+If the index is out of bounds, subsequent field reads operate on unrelated kernel memory,
+resulting in a heap out-of-bounds read.
+</p>
+</div>
+
+<div class="section">
+<h2>Vulnerability 2: max3420_set_clear_feature() OOB Write</h2>
+
+<p>
+The same index is used for write operations:
+</p>
+
+<pre>
+id = udc->setup.wIndex & USB_ENDPOINT_NUMBER_MASK;
+ep = &udc->ep[id];
+</pre>
+
+<p>
+When <code>id ≥ 4</code>, writes target memory beyond the endpoint array,
+corrupting adjacent kernel heap or struct fields.
+</p>
+</div>
+
+<div class="section">
+<h2>Trigger</h2>
+
+<pre>
+bmRequestType = 0x02
+bRequest      = SET_FEATURE
+wValue        = ENDPOINT_HALT
+wIndex        = 0x0007
+wLength       = 0x0000
+</pre>
+
+<p>
+This produces <code>id = 7</code>, which is outside the valid range [0–3].
+</p>
+</div>
+
+<div class="section">
+<h2>Execution Flow</h2>
+
+<pre>
+max3420_handle_irqs()
+  → SUDAVIRQ
+    → max3420_handle_setup()
+      → spi_rd_buf(SUDFIFO)
+      → max3420_getstatus() / max3420_set_clear_feature()
+        → udc->ep[index] (no bounds check)
+</pre>
+
+<p>
+No validation occurs between packet ingestion and array indexing.
+</p>
+</div>
+
+<div class="section">
+<h2>Crash Evidence</h2>
+
+<p>
+AddressSanitizer confirms out-of-bounds access in a userspace harness:
+</p>
+
+<pre>
+runtime error: index 7 out of bounds for type 'max3420_ep [4]'
+ERROR: AddressSanitizer: heap-buffer-overflow
+
+WRITE of size 1 at 0x... (168 bytes past region)
+
+#0 max3420_set_clear_feature
+#1 run_test
+#2 main
+</pre>
+
+<p>
+The access occurs 168 bytes past the allocated region, confirming struct adjacency corruption before heap boundary.
+</p>
+</div>
+
+<div class="section">
+<h2>Root Cause</h2>
+
+<p>
+The driver assumes the masked USB field is safe to use as an array index:
+</p>
+
+<pre>
+wIndex & USB_ENDPOINT_NUMBER_MASK
+</pre>
+
+<p>
+However, masking does not enforce the actual array bounds (<code>MAX3420_MAX_EPS = 4</code>),
+leading to a mismatch between protocol encoding and memory safety constraints.
+</p>
+</div>
+
+<div class="section">
+<h2>Fix</h2>
+
+<pre>
+id = udc->setup.wIndex & USB_ENDPOINT_NUMBER_MASK;
+
+if (id >= MAX3420_MAX_EPS)
+    goto stall;
+
+ep = &udc->ep[id];
+</pre>
+
+<p>
+The check must be applied consistently across all endpoint-accessing paths.
+</p>
+
+</div>
+
+<div class="section">
+<h2>Affected Scope</h2>
+
+<p>
+All kernels containing the MAX3420 USB Device Controller driver are affected.
+</p>
+
+<section class="section">
+
+<h2>Upstream Patch & Timeline</h2>
+
+<p>
+The vulnerability was reported upstream through the Linux Kernel Mailing List (LKML), followed by patch review, maintainer discussion, and integration into the upstream kernel tree.
+</p>
+
+<p>
+<strong>LKML Activity & Patch History:</strong>
+<a href="https://lore.kernel.org/all/?q=Pavitra+Jha"
+target="_blank"
+rel="noopener noreferrer">
+lore.kernel.org/all/?q=Pavitra+Jha
+</a>
+</p>
+
+</section>
+<div class="section">
+<h2>Author</h2>
+
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+
+</div>
+
+</div>
+
+</div>
+</body>
+</html>
