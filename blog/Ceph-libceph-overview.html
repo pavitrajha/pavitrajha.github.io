@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Linux libceph: Three Unchecked Decodes in the Ceph Kernel Client (Overview)</title>
+<link rel="stylesheet" href="../style.css" />
+
+<style>
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+.container { max-width: 920px; margin: 0 auto; padding: 56px 22px; }
+h1 { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 14px; color: #f2f2f2; }
+h2 { font-size: 18px; font-weight: 600; margin-top: 46px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1f2a36; color: #f0f0f0; }
+h3 { font-size: 15px; font-weight: 600; margin-top: 26px; margin-bottom: 8px; color: #d8d8d8; }
+p { margin: 12px 0; color: #cfcfcf; }
+.meta { color: #9aa4ad; font-size: 13px; }
+a { color: #7fb3ff; text-decoration: none; border-bottom: 1px solid transparent; }
+a:hover { border-bottom: 1px solid #7fb3ff; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: #e8e8e8; background: #111823; padding: 2px 5px; border-radius: 4px; }
+pre { background: #0f1620; border: 1px solid #1b2633; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5; color: #d7d7d7; border-radius: 6px; }
+.section { margin-top: 22px; }
+hr { border: none; border-top: 1px solid #1b2633; margin: 34px 0; }
+ul { padding-left: 20px; }
+li { margin: 6px 0; color: #cfcfcf; }
+.table-wrap { overflow-x: auto; margin: 16px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 720px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1b2633; vertical-align: top; color: #cfcfcf; }
+th { color: #f0f0f0; font-weight: 600; border-bottom: 1px solid #2a3a4d; }
+.hero { margin: 0 0 34px; border: 1px solid #1b2633; border-radius: 8px; overflow: hidden; background: #0b0f14; }
+.hero svg { display: block; width: 100%; height: auto; }
+@media (prefers-reduced-motion: no-preference) {
+    .pulse { transform-box: fill-box; transform-origin: center; animation: pulse 3.2s ease-out infinite; }
+}
+@keyframes pulse { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.6); opacity: 0; } }
+::selection { background: #1f3a5f; color: #ffffff; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="hero" aria-hidden="true">
+<svg viewBox="0 0 920 280" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <radialGradient id="bg" cx="76%" cy="50%" r="70%">
+      <stop offset="0" stop-color="#16294a"/>
+      <stop offset="0.55" stop-color="#0d1624"/>
+      <stop offset="1" stop-color="#0b0f14"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#cfe3ff"/>
+      <stop offset="0.35" stop-color="#7fb3ff"/>
+      <stop offset="1" stop-color="#7fb3ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fade" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="dotmask"><rect width="920" height="280" fill="url(#fade)"/></mask>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" fill="#2a3f5c"/>
+    </pattern>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+
+  <rect width="920" height="280" fill="url(#bg)"/>
+  <rect width="920" height="280" fill="url(#dots)" mask="url(#dotmask)"/>
+
+  <g fill="none" stroke="#7fb3ff">
+    <circle cx="700" cy="140" r="50" stroke-opacity="0.35"/>
+    <circle cx="700" cy="140" r="95" stroke-opacity="0.26"/>
+    <circle cx="700" cy="140" r="145" stroke-opacity="0.18" stroke-dasharray="2 6"/>
+    <circle cx="700" cy="140" r="200" stroke-opacity="0.12"/>
+    <circle cx="700" cy="140" r="260" stroke-opacity="0.07"/>
+  </g>
+
+  <g stroke="#7fb3ff" stroke-opacity="0.4" stroke-width="1" fill="none">
+    <path d="M700 140 L789 172 M700 140 L667 229 M700 140 L611 107 M700 140 L732 51"/>
+    <path d="M789 172 L793 251 M789 172 L897 175 M667 229 L793 251 M667 229 L564 190"/>
+    <path d="M611 107 L564 190 M611 107 L627 14 M611 107 L536 25 M732 51 L627 14 M732 51 L826 67"/>
+    <path d="M564 190 L500 140 M536 25 L500 140 M826 67 L899 123 M897 175 L899 123"/>
+  </g>
+
+  <g fill="#7fb3ff">
+    <circle cx="789" cy="172" r="4"/><circle cx="667" cy="229" r="4"/>
+    <circle cx="611" cy="107" r="4"/><circle cx="732" cy="51" r="4"/>
+    <circle cx="793" cy="251" r="3" fill-opacity="0.7"/><circle cx="564" cy="190" r="3" fill-opacity="0.7"/>
+    <circle cx="627" cy="14" r="3" fill-opacity="0.7"/><circle cx="897" cy="175" r="3" fill-opacity="0.7"/>
+    <circle cx="899" cy="123" r="2.5" fill-opacity="0.5"/><circle cx="536" cy="25" r="2.5" fill-opacity="0.5"/>
+    <circle cx="500" cy="140" r="2.5" fill-opacity="0.5"/>
+  </g>
+
+  <circle cx="700" cy="140" r="34" fill="url(#core)" filter="url(#glow)"/>
+  <circle cx="700" cy="140" r="7" fill="#e8f1ff"/>
+
+  <circle class="pulse" cx="826" cy="67" r="9" fill="none" stroke="#ff6b6b" stroke-width="1.5"/>
+  <circle cx="826" cy="67" r="9" fill="#ff6b6b" fill-opacity="0.35" filter="url(#glow)"/>
+  <circle cx="826" cy="67" r="4.5" fill="#ff8a8a"/>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" fill="#7fb3ff" fill-opacity="0.16">
+    <text x="28" y="196">00 00 00 00 00 00 00 00 00 00 fc fc fc</text>
+    <text x="28" y="214">fc fc fc fc cc cc cc cc 00 00 00 00 00</text>
+    <text x="28" y="232">00 00 00 00 00 00 00 00 00 00 00 00 00</text>
+    <text x="28" y="250">fc fc fc fc fc fc fc fc fc fc fc fc fc</text>
+  </g>
+</svg>
+</div>
+
+<header>
+<h1>Linux libceph: Three Unchecked Decodes in the Ceph Kernel Client</h1>
+<p class="meta">
+Linux Kernel libceph Client | net/ceph/ | Slab Memory Safety | Research Overview
+</p>
+</header>
+
+<section class="section">
+    <h2>1. Summary</h2>
+    <p>
+        Three out-of-bounds read vulnerabilities were found in the Linux kernel's <code>libceph</code> client, in the code that parses replies from Ceph OSDs. They are tracked as CVE-2026-68082, CVE-2026-80557 and CVE-2026-80561. All three are fixed upstream. Each has its own technical write-up, linked below.
+    </p>
+    <p>
+        The three bugs share one root cause. <code>ceph_start_decoding()</code> accepts <code>struct_len=0</code> as valid, which can leave the decode cursor at <code>p == end</code>. Code that then reads a fixed-width field without its own bounds check reads past the end of the receive buffer. Each of the three bugs is a different site where this happened.
+    </p>
+</section>
+
+<section class="section">
+    <h2>2. The Common Pattern</h2>
+    <pre>
+ceph_start_decoding()
+  - struct_len = 0 passes validation
+  - p == end on return
+      |
+      v
+bare ceph_decode_*() / raw *p += n
+  - no check that the bytes remain
+      |
+      v
+read (or cursor advance) past the validated buffer
+    </pre>
+    <p>
+        Neighbouring parsers in the same files already used the bounds-checked <code>_safe</code> helpers. The fixes bring the remaining sites in line with that pattern, so the invariant is now consistent: every read and every cursor advance verifies that the bytes remain inside the received message.
+    </p>
+</section>
+
+<section class="section">
+    <h2>3. The Three Findings</h2>
+    <div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>CVE</th>
+                <th>Function / file</th>
+                <th>Issue</th>
+                <th>Fix commit</th>
+                <th>CVSS</th>
+                <th>Write-up</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>CVE-2026-68082</td>
+                <td><code>decode_lockers()</code><br><code>cls_lock_client.c</code></td>
+                <td>Two bare decodes (lock count, lock type) after a zero-length struct</td>
+                <td>See write-up</td>
+                <td>9.8 (kernel.org CNA)</td>
+                <td><a href="Ceph-oob1-writeup.html">oob1</a></td>
+            </tr>
+            <tr>
+                <td>CVE-2026-80557</td>
+                <td><code>decode_watchers()</code><br><code>osd_client.c</code></td>
+                <td>Bare 4-byte decode of the watcher count, fed into an allocation size</td>
+                <td><code>00ead17c7de1</code></td>
+                <td><!-- TODO: fill from NVD / kernel.org CNA -->&mdash;</td>
+                <td><a href="Ceph-oob2-writeup.html">oob2</a></td>
+            </tr>
+            <tr>
+                <td>CVE-2026-80561</td>
+                <td><code>decode_locker()</code><br><code>cls_lock_client.c</code></td>
+                <td>Unchecked name copy, unchecked timespec skip, unchecked length decode plus skip</td>
+                <td><code>437b6551cfcc</code></td>
+                <td><!-- TODO: fill from NVD / kernel.org CNA -->&mdash;</td>
+                <td><a href="Ceph-oob3-writeup.html">oob3</a></td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+    <p>
+        The KASAN-confirmed primitive in each case is a slab out-of-bounds read of up to 4 bytes (CVE-2026-68082, CVE-2026-80557) or a 4-byte read plus unchecked cursor movement (CVE-2026-80561). The write-ups state exactly what was demonstrated and do not claim more.
+    </p>
+</section>
+
+<section class="section">
+    <h2>4. Attacker Model</h2>
+    <ul>
+        <li><strong>Position required:</strong> the attacker must be able to send replies to a kernel Ceph client as an OSD, either a malicious OSD or a compromised one. A network attacker who can inject into an unprotected OSD session is a second route.</li>
+        <li><strong>Privilege required:</strong> none beyond that established OSD session.</li>
+        <li><strong>Reachable operations:</strong> <code>lock.get_info</code> (including RBD exclusive lock acquisition) and <code>CEPH_OSD_OP_LIST_WATCHERS</code>.</li>
+        <li><strong>Not affected:</strong> Ceph server daemons. This is the in-kernel client only.</li>
+    </ul>
+    <p>
+        CVSS 9.8 for CVE-2026-68082 is the kernel.org CNA's assessment. Practical exposure depends on whether an attacker can reach the OSD-to-client path, which is why this section is stated before any exposure numbers.
+    </p>
+</section>
+
+<section class="section">
+    <h2>5. Where the Kernel Client Is Used</h2>
+    <p>
+        The vulnerable code is the kernel client used to mount Ceph block (RBD) and file (CephFS) storage on a host. It is not used by Ceph's own storage daemons.
+    </p>
+    <ul>
+        <li><strong>Kubernetes with Rook and ceph-csi:</strong> the CSI driver can attach RBD volumes through the kernel module (krbd) and mount CephFS volumes through the in-kernel driver.</li>
+        <li><strong>Proxmox VE:</strong> uses krbd for RBD storage.</li>
+        <li><strong>Any host running <code>rbd map</code> or <code>mount -t ceph</code>.</strong></li>
+    </ul>
+    <p>
+        For scale, two published survey figures give context. They measure adoption of the platforms, not the number of vulnerable kernel clients, and should not be multiplied together:
+    </p>
+    <ul>
+        <li>CNCF Annual Cloud Native Survey 2025 (published January 2026): 82% of container users run Kubernetes in production.</li>
+        <li>CNCF Annual Survey 2022: Rook was in production at 10.4% of respondents.</li>
+    </ul>
+    <p>
+        Both are self-selected survey results. Exposure here means potentially exposed deployments, not confirmed affected systems.
+    </p>
+</section>
+
+<section class="section">
+    <h2>6. Remediation</h2>
+    <p>
+        Run a kernel that contains the fixes. Stable backports for CVE-2026-68082 are present in the 5.10.y, 5.15.y, 6.1.y, 6.6.y, 6.12.y and 6.18.y trees, in addition to 7.1.y and mainline. Check each write-up for the fix commit, and check your distribution's kernel changelog for the corresponding backport. Where an update is not yet possible, restrict which hosts can act as OSDs for your clients and use authenticated, protected sessions.
+    </p>
+</section>
+
+<section class="section">
+    <h2>7. Technical Write-ups</h2>
+    <p>Each page has the execution path, source analysis, KASAN data, threat model and patch.</p>
+    <ul>
+        <li><a href="Ceph-oob1-writeup.html">CVE-2026-68082: two unsafe bare decodes in decode_lockers()</a></li>
+        <li><a href="Ceph-oob2-writeup.html">CVE-2026-80557: out-of-bounds read in decode_watchers()</a></li>
+        <li><a href="Ceph-oob3-writeup.html">CVE-2026-80561: multiple unsafe decodes in decode_locker()</a></li>
+    </ul>
+    <p>
+        <strong>LKML Activity & Patch History:</strong>
+        <a href="https://lore.kernel.org/all/?q=Pavitra+Jha" target="_blank" rel="noopener noreferrer">lore.kernel.org/all/?q=Pavitra+Jha</a>
+    </p>
+</section>
+
+<div class="section">
+<h2>Author</h2>
+<p>
+Pavitra Jha<br>
+Offensive Security Researcher<br>
+Kernel / Driver Exploitation Research
+</p>
+</div>
+
+</div>
+
+</body>
+</html>
