@@ -173,31 +173,28 @@ read (or cursor advance) past the validated buffer
                 <td>CVE-2026-68082</td>
                 <td><code>decode_lockers()</code><br><code>cls_lock_client.c</code></td>
                 <td>Two bare decodes (lock count, lock type) after a zero-length struct</td>
-                <td>See write-up</td>
                 <td>9.8 (kernel.org CNA)</td>
-                <td><a href="Ceph-oob1-writeup.html">oob1</a></td>
+                <td><a href="Ceph-oob1-writeup.html">OOB 1</a></td>
             </tr>
             <tr>
                 <td>CVE-2026-80557</td>
                 <td><code>decode_watchers()</code><br><code>osd_client.c</code></td>
                 <td>Bare 4-byte decode of the watcher count, fed into an allocation size</td>
-                <td><code>00ead17c7de1</code></td>
-                <td><!-- TODO: fill from NVD / kernel.org CNA -->&mdash;</td>
-                <td><a href="Ceph-oob2-writeup.html">oob2</a></td>
+                <td>9.8 (kernel.org CNA)</td>
+                <td><a href="Ceph-oob2-writeup.html">OOB 2</a></td>
             </tr>
             <tr>
                 <td>CVE-2026-80561</td>
                 <td><code>decode_locker()</code><br><code>cls_lock_client.c</code></td>
                 <td>Unchecked name copy, unchecked timespec skip, unchecked length decode plus skip</td>
-                <td><code>437b6551cfcc</code></td>
-                <td><!-- TODO: fill from NVD / kernel.org CNA -->&mdash;</td>
-                <td><a href="Ceph-oob3-writeup.html">oob3</a></td>
+                <td>9.8 (kernel.org CNA)</td>
+                <td><a href="Ceph-oob3-writeup.html">OOB 3</a></td>
             </tr>
         </tbody>
     </table>
     </div>
     <p>
-        The KASAN-confirmed primitive in each case is a slab out-of-bounds read of up to 4 bytes (CVE-2026-68082, CVE-2026-80557) or a 4-byte read plus unchecked cursor movement (CVE-2026-80561). The write-ups state exactly what was demonstrated and do not claim more.
+        The KASAN-confirmed primitive in each case is a slab out-of-bounds read of up to 4 bytes (CVE-2026-68082, CVE-2026-80557) or a 4-byte read plus unchecked cursor movement (CVE-2026-80561). The write-ups state exactly what was demonstrated.
     </p>
 </section>
 
@@ -209,9 +206,6 @@ read (or cursor advance) past the validated buffer
         <li><strong>Reachable operations:</strong> <code>lock.get_info</code> (including RBD exclusive lock acquisition) and <code>CEPH_OSD_OP_LIST_WATCHERS</code>.</li>
         <li><strong>Not affected:</strong> Ceph server daemons. This is the in-kernel client only.</li>
     </ul>
-    <p>
-        CVSS 9.8 for CVE-2026-68082 is the kernel.org CNA's assessment. Practical exposure depends on whether an attacker can reach the OSD-to-client path, which is why this section is stated before any exposure numbers.
-    </p>
 </section>
 
 <section class="section">
