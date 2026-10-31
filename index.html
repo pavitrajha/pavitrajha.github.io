@@ -7,6 +7,31 @@
       Pavitra Jha
     </title>
     <link rel="stylesheet" href="style.css" />
+    <style>
+      .nav-menu { position: relative; margin-left: auto; }
+      .nav-menu summary {
+        list-style: none; cursor: pointer; user-select: none;
+        padding: 8px 14px; border-radius: 8px;
+        border: 1px solid rgba(128, 128, 128, 0.4);
+        font-size: 14px; font-weight: 600; line-height: 1.2;
+      }
+      .nav-menu summary::-webkit-details-marker { display: none; }
+      .nav-menu summary::after { content: "\25BE"; margin-left: 8px; display: inline-block; transition: transform 0.15s ease; }
+      .nav-menu[open] summary::after { transform: rotate(180deg); }
+      .nav-menu summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+      .nav-menu-panel {
+        position: absolute; right: 0; top: calc(100% + 8px); z-index: 1000;
+        min-width: 220px; padding: 6px; border-radius: 10px;
+        border: 1px solid rgba(128, 128, 128, 0.35);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+        background: #fff;
+      }
+      .nav-menu-panel a {
+        display: block; padding: 10px 14px; border-radius: 6px;
+        color: inherit; text-decoration: none; font-size: 14px;
+      }
+      .nav-menu-panel a:hover, .nav-menu-panel a:focus-visible { background: rgba(128, 128, 128, 0.16); outline: none; }
+    </style>
     <meta property="og:title" content="Pavitra Jha" />
     <meta property="og:description" content="Kernel and browser security research since age 9." />
     <meta property="og:type" content="website" />
@@ -23,15 +48,18 @@
         <div class="brand">
           PAVITRA JHA
         </div>
-        <div class="nav-links">
-          <a href="#featured-research">Featured Research</a>
-          <a href="#android-deep-dive">Android Deep Dive</a>
-          <a href="#public-record">Public Record</a>
-          <a href="#recognition">Recognition</a>
-          <a href="#capability">Capability</a>
-          <a href="#fun-facts">Fun Facts</a>
-          <a href="#contact">Contact</a>
-        </div>
+        <details class="nav-menu" id="nav-menu">
+          <summary aria-label="Open navigation menu">Menu</summary>
+          <div class="nav-menu-panel">
+            <a href="#featured-research">Featured Research</a>
+            <a href="#android-deep-dive">Android Deep Dive</a>
+            <a href="#public-record">Public Record</a>
+            <a href="#recognition">Recognition</a>
+            <a href="#capability">Capability</a>
+            <a href="#fun-facts">Fun Facts</a>
+            <a href="#contact">Contact</a>
+          </div>
+        </details>
       </div>
     </nav>
     <div class="container">
@@ -267,7 +295,7 @@
           <li>I got the best student of the year award from my school when I was in 10th grade!</li>
           <li>I have a weird habit of making notes of technologies I see when I go out as "Potential Targets".</li>
           <li>My first vuln I reported to google was literally a 12 slide presentation about them not using httponly flag on a cookie.</li>
-          <li>I used to be an athlete and had over 42 medals before I became a hacker ie, when I was a kid! really!</li>
+          <li>I used to be an athelete and had over 42 medals before I became a hacker ie, when I was a kid! really!</li>
         </ul>
       </section>
 
@@ -298,5 +326,26 @@
         </div>
       </section>
     </div>
+    <script>
+      (function () {
+        var menu = document.getElementById("nav-menu");
+        if (!menu) return;
+        var panel = menu.querySelector(".nav-menu-panel");
+        function solid(c) { return c && c !== "transparent" && c !== "rgba(0, 0, 0, 0)"; }
+        var bg = getComputedStyle(document.body).backgroundColor;
+        if (!solid(bg)) bg = getComputedStyle(document.documentElement).backgroundColor;
+        panel.style.background = solid(bg) ? bg : "#fff";
+        panel.style.color = getComputedStyle(document.body).color;
+        menu.addEventListener("click", function (e) {
+          if (e.target.closest("a")) menu.removeAttribute("open");
+        });
+        document.addEventListener("click", function (e) {
+          if (!menu.contains(e.target)) menu.removeAttribute("open");
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") menu.removeAttribute("open");
+        });
+      })();
+    </script>
   </body>
 </html>
