@@ -127,6 +127,9 @@ Linux Kernel libceph Client | net/ceph/ | Slab Memory Safety | Research Overview
 
 <section class="section">
     <h2>1. Summary</h2>
+    <p style="font-size:17px;color:#e0e0e0;border-left:2px solid #7fb3ff;padding-left:14px;margin:18px 0 6px;">
+        This page covers three out-of-bounds read vulnerabilities in the Linux kernel's Ceph client, found by Pavitra Jha, a 16-year-old independent researcher working alone with no team or funding. All three trace back to one broken assumption, all three are fixed upstream, and each has its own technical write-up. The summary below explains the shared bug, who is potentially exposed, and where to find the patches.
+    </p>
     <p>
         Three out-of-bounds read vulnerabilities were found in the Linux kernel's <code>libceph</code> client, in the code that parses replies from Ceph OSDs. They are tracked as CVE-2026-68082, CVE-2026-80557 and CVE-2026-80561. All three are fixed upstream. Each has its own technical write-up, linked below.
     </p>
